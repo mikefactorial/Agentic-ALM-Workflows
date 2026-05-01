@@ -29,17 +29,19 @@ on:
         required: false
         type: boolean
         default: true
+      create_pr:
+        description: 'Open a pull request instead of committing directly to branch_name'
+        required: false
+        type: boolean
+        default: false
     secrets:
-      APP_ID:
-        required: true
-      APP_PRIVATE_KEY:
-        required: true
       HOOK_SECRETS:
         required: false
 
 permissions:
   id-token: write
   contents: write
+  pull-requests: write
 
 env:
   HOOK_VARIABLES: ${{ vars.HOOK_VARIABLES }}
@@ -53,19 +55,10 @@ jobs:
     environment: ${{ inputs.environment }}
 
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout calling repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout platform scripts
         uses: actions/checkout@v4
@@ -73,12 +66,22 @@ jobs:
           repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
           ref: main
           path: .platform
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Configure Git
         run: |
           git config user.name "alm-automation[bot]"
           git config user.email "alm-automation[bot]@users.noreply.github.com"
+
+      - name: Resolve sync branch
+        id: branch
+        shell: pwsh
+        run: |
+          if ('${{ inputs.create_pr }}' -eq 'true') {
+            $syncBranch = "sync/${{ inputs.solution_name }}-${{ github.run_number }}"
+          } else {
+            $syncBranch = "${{ inputs.branch_name }}"
+          }
+          "sync_branch=$syncBranch" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Sync Solution
         shell: pwsh
@@ -90,9 +93,22 @@ jobs:
             clientId              = "${{ vars.DATAVERSE_CLIENT_ID }}"
             publishCustomizations = $${{ inputs.publish_customizations }}
             commitMessage         = "${{ inputs.commit_message }}"
-            branchName            = "${{ inputs.branch_name }}"
+            branchName            = "${{ steps.branch.outputs.sync_branch }}"
           }
           .platform\.github\workflows\scripts\Sync-Solution.ps1 @syncParams
+
+      - name: Create Pull Request
+        if: inputs.create_pr == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $pr = gh pr create `
+            --base "${{ inputs.branch_name }}" `
+            --head "${{ steps.branch.outputs.sync_branch }}" `
+            --title "chore(sync): sync ${{ inputs.solution_name }} from ${{ inputs.environment }}" `
+            --body "Automated solution sync from environment ``${{ inputs.environment }}``.`n`nRun: #${{ github.run_number }}"
+          Write-Host "Pull request created: $pr"
 
       - name: Sync Summary
         if: success()
@@ -101,4 +117,4 @@ jobs:
           echo "✓ Solution Sync: SUCCESS"
           echo "=========================================="
           echo "  ✓ Synced '${{ inputs.solution_name }}' from ${{ inputs.environment }}"
-          echo "  ✓ Committed to branch '${{ inputs.branch_name }}'"
+          echo "  ✓ Committed to branch '${{ steps.branch.outputs.sync_branch }}'"

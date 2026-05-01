@@ -43,17 +43,19 @@ on:
         required: false
         type: boolean
         default: false
+      create_pr:
+        description: 'Open a pull request instead of committing directly to branch_name'
+        required: false
+        type: boolean
+        default: false
     secrets:
-      APP_ID:
-        required: true
-      APP_PRIVATE_KEY:
-        required: true
       HOOK_SECRETS:
         required: false
 
 permissions:
   contents: write
   id-token: write
+  pull-requests: write
 
 env:
   HOOK_VARIABLES: ${{ vars.HOOK_VARIABLES }}
@@ -66,19 +68,10 @@ jobs:
     environment: ${{ inputs.source_environment }}
 
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout calling repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout platform scripts
         uses: actions/checkout@v4
@@ -86,7 +79,6 @@ jobs:
           repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
           ref: main
           path: .platform
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Configure Git
         run: |
@@ -96,6 +88,17 @@ jobs:
       - name: Setup Power Platform CLI
         shell: pwsh
         run: .platform\.github\workflows\scripts\Install-PacCli.ps1
+
+      - name: Resolve sync branch
+        id: branch
+        shell: pwsh
+        run: |
+          if ('${{ inputs.create_pr }}' -eq 'true') {
+            $syncBranch = "sync/${{ inputs.solution_name }}-${{ github.run_number }}"
+          } else {
+            $syncBranch = "${{ inputs.branch_name }}"
+          }
+          "sync_branch=$syncBranch" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Sync Solution
         shell: pwsh
@@ -107,7 +110,20 @@ jobs:
             -clientId "${{ vars.DATAVERSE_CLIENT_ID }}" `
             -publishCustomizations $${{ inputs.publish_customizations }} `
             -commitMessage "${{ inputs.commit_message }}" `
-            -branchName "${{ inputs.branch_name }}"
+            -branchName "${{ steps.branch.outputs.sync_branch }}"
+
+      - name: Create Pull Request
+        if: inputs.create_pr == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $pr = gh pr create `
+            --base "${{ inputs.branch_name }}" `
+            --head "${{ steps.branch.outputs.sync_branch }}" `
+            --title "chore(sync): sync ${{ inputs.solution_name }} from ${{ inputs.source_environment }}" `
+            --body "Automated solution sync from environment ``${{ inputs.source_environment }}``.`n`nRun: #${{ github.run_number }}"
+          Write-Host "Pull request created: $pr"
 
       - name: Upload synced solution
         uses: actions/upload-artifact@v4
@@ -124,18 +140,8 @@ jobs:
       solutions: ${{ inputs.solution_name }}
 
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout calling repo
         uses: actions/checkout@v4
-        with:
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout platform scripts
         uses: actions/checkout@v4
@@ -143,7 +149,6 @@ jobs:
           repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
           ref: main
           path: .platform
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Download synced solution
         uses: actions/download-artifact@v4
@@ -218,18 +223,8 @@ jobs:
       matrix: ${{ fromJson(needs.prepare-deployment.outputs.matrix) }}
 
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout calling repo
         uses: actions/checkout@v4
-        with:
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout platform scripts
         uses: actions/checkout@v4
@@ -237,7 +232,6 @@ jobs:
           repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
           ref: main
           path: .platform
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Power Platform CLI
         shell: pwsh

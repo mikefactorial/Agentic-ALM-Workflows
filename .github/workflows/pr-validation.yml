@@ -25,10 +25,6 @@ on:
         type: string
         default: ''
     secrets:
-      APP_ID:
-        required: true
-      APP_PRIVATE_KEY:
-        required: true
       HOOK_SECRETS:
         required: false
 
@@ -55,19 +51,10 @@ jobs:
       solutions_exist: ${{ steps.detect.outputs.solutions_exist }}
 
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout calling repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout platform scripts
         uses: actions/checkout@v4
@@ -75,7 +62,6 @@ jobs:
           repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
           ref: main
           path: .platform
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Detect component changes
         id: detect
@@ -92,18 +78,8 @@ jobs:
     if: needs.detect-changes.outputs.plugins_exist == 'true' && needs.detect-changes.outputs.plugins_changed == 'true'
 
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout calling repo
         uses: actions/checkout@v4
-        with:
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout platform scripts
         uses: actions/checkout@v4
@@ -111,7 +87,6 @@ jobs:
           repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
           ref: main
           path: .platform
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -150,18 +125,8 @@ jobs:
         group: ${{ fromJson(needs.detect-changes.outputs.control_groups) }}
 
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout calling repo
         uses: actions/checkout@v4
-        with:
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout platform scripts
         uses: actions/checkout@v4
@@ -169,7 +134,6 @@ jobs:
           repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
           ref: main
           path: .platform
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -210,19 +174,10 @@ jobs:
     environment: ${{ inputs.dev_environment }}
 
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout calling repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout platform scripts
         uses: actions/checkout@v4
@@ -230,7 +185,6 @@ jobs:
           repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
           ref: main
           path: .platform
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4

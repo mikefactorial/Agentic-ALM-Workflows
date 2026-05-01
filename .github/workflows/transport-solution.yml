@@ -29,6 +29,11 @@ on:
         required: false
         type: boolean
         default: true
+      sync_create_pr:
+        description: 'Open a pull request for the sync instead of committing directly to sync_branch_name'
+        required: false
+        type: boolean
+        default: true
       sync_commit_message:
         description: 'Commit message for solution sync (if sync is enabled)'
         required: false
@@ -45,10 +50,6 @@ on:
         type: boolean
         default: true
     secrets:
-      APP_ID:
-        required: true
-      APP_PRIVATE_KEY:
-        required: true
       HOOK_SECRETS:
         required: false
 
@@ -61,6 +62,7 @@ permissions:
   id-token: write
   contents: write
   actions: read
+  pull-requests: write
 
 env:
   HOOK_VARIABLES: ${{ vars.HOOK_VARIABLES }}
@@ -73,18 +75,8 @@ jobs:
     environment: ${{ inputs.source_environment }}
 
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout calling repo
         uses: actions/checkout@v4
-        with:
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout platform scripts
         uses: actions/checkout@v4
@@ -92,7 +84,6 @@ jobs:
           repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
           ref: main
           path: .platform
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Export Solution
         shell: pwsh
@@ -119,18 +110,8 @@ jobs:
     needs: export-solution
 
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout calling repo
         uses: actions/checkout@v4
-        with:
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout platform scripts
         uses: actions/checkout@v4
@@ -138,7 +119,6 @@ jobs:
           repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
           ref: main
           path: .platform
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Download solution artifact
         uses: actions/download-artifact@v4
@@ -176,19 +156,10 @@ jobs:
     if: ${{ inputs.sync_target_solution == true }}
 
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout calling repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout platform scripts
         uses: actions/checkout@v4
@@ -196,12 +167,22 @@ jobs:
           repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
           ref: main
           path: .platform
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Configure Git
         run: |
           git config user.name "alm-automation[bot]"
           git config user.email "alm-automation[bot]@users.noreply.github.com"
+
+      - name: Resolve sync branch
+        id: branch
+        shell: pwsh
+        run: |
+          if ('${{ inputs.sync_create_pr }}' -eq 'true') {
+            $syncBranch = "sync/${{ inputs.target_solution_name }}-${{ github.run_number }}"
+          } else {
+            $syncBranch = "${{ inputs.sync_branch_name }}"
+          }
+          "sync_branch=$syncBranch" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Sync Solution
         shell: pwsh
@@ -210,9 +191,22 @@ jobs:
             -solutionName "${{ inputs.target_solution_name }}" `
             -environmentUrl "${{ vars.DATAVERSE_URL }}" `
             -commitMessage "${{ inputs.sync_commit_message }}" `
-            -branchName "${{ inputs.sync_branch_name }}" `
+            -branchName "${{ steps.branch.outputs.sync_branch }}" `
             -tenantId "${{ vars.AZURE_TENANT_ID }}" `
             -clientId "${{ vars.DATAVERSE_CLIENT_ID }}"
+
+      - name: Create Pull Request
+        if: inputs.sync_create_pr == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $pr = gh pr create `
+            --base "${{ inputs.sync_branch_name }}" `
+            --head "${{ steps.branch.outputs.sync_branch }}" `
+            --title "chore(transport): sync ${{ inputs.target_solution_name }} after transport from ${{ inputs.source_environment }}" `
+            --body "Automated sync after transporting ``${{ inputs.source_solution_name }}`` from ``${{ inputs.source_environment }}`` → ``${{ inputs.target_environment }}``.`n`nRun: #${{ github.run_number }}"
+          Write-Host "Pull request created: $pr"
 
       - name: Sync Summary
         if: success()
@@ -221,4 +215,4 @@ jobs:
           echo "✓ Solution Sync: SUCCESS"
           echo "=========================================="
           echo "  ✓ Synced '${{ inputs.target_solution_name }}' to repository"
-          echo "  ✓ Committed to branch '${{ inputs.sync_branch_name }}'"
+          echo "  ✓ Committed to branch '${{ steps.branch.outputs.sync_branch }}'"

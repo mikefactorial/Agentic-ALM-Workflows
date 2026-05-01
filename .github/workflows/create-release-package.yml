@@ -22,11 +22,6 @@ on:
         required: false
         type: boolean
         default: false
-    secrets:
-      APP_ID:
-        required: true
-      APP_PRIVATE_KEY:
-        required: true
 
 concurrency:
   group: release-package-${{ github.repository }}-${{ github.ref }}
@@ -91,19 +86,10 @@ jobs:
       package_tag:     ${{ steps.build.outputs.package_tag }}
 
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout calling repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout platform scripts
         uses: actions/checkout@v4
@@ -111,7 +97,6 @@ jobs:
           repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
           ref: main
           path: .platform
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
