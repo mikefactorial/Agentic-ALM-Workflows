@@ -49,11 +49,11 @@ Before proceeding, gather the following. Ask only for what is missing — do not
 | 1 | Name for this project or organization | `clientName` | `Acme Corp Platform` |
 | 2 | One-line project or solution description | `productDescription` | `Power Platform solution for Acme Corp` |
 | 3 | Company or organization name (PascalCase, no spaces) — becomes the Dataverse publisher name and prefixes your plugin `.sln` file | `publisher` | `AcmeCorp` |
-| 4 | Primary solution name (PascalCase, no spaces) — additional solutions can be added to `solutionAreas[]` after setup | `solutionName` | `AcmePlatform` |
+| 4 | What is the name of your main Power Platform solution? (PascalCase, no spaces — more solutions can be added later) | `solutionName` | `AcmePlatform` |
 | 5 | Dataverse publisher prefix (lowercase, 3–5 chars) — the short prefix Dataverse prepends to all schema names for this publisher | `solutionPrefix` | `acm` |
 | 6 | GitHub organization name | `githubOrg` | `AcmeCorp` |
 | 7 | GitHub repository name | `repoName` | `AcmeCorp-Platform` |
-| 8 | Short slug for GitHub environment names (lowercase) — used to name environments like `{slug}-dev`, `{slug}-test`, `{slug}-prod` | `envPrefix` | `acme` |
+| 8 | What short lowercase name should identify your deployment environments? (e.g., `acme` creates environments named `acme-dev`, `acme-test`, `acme-prod`) | `envPrefix` | `acme` |
 | 9 | Release tag suffix — appended to GitHub Release tags like `v2026.05.01.1-{tag}` (default: same as solution name) | `packageTag` | `AcmePlatform` |
 
 ### Environment URLs
