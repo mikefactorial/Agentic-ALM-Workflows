@@ -1,0 +1,9 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "plugins": [
+    {
+      "name": "power-platform-alm",
+      "source": "./.github/plugins/power-platform-alm"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "power-platform-alm",
+  "description": "Agent skills for Power Platform ALM — start features, scaffold plugins and PCF controls, sync solutions, deploy, transport, and release using the Agentic-ALM-Template.",
+  "version": "1.0.0",
+  "author": {
+    "name": "mikefactorial",
+    "url": "https://github.com/mikefactorial"
+  },
+  "homepage": "https://github.com/mikefactorial/Agentic-ALM-Workflows",
+  "keywords": ["power-platform", "dataverse", "alm", "pac-cli", "github-actions"],
+  "license": "MIT",
+  "skills": ["skills/"]
+}
