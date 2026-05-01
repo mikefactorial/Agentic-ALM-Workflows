@@ -1,15 +1,15 @@
 ---
 name: register-plugin
-description: 'Register a plugin package or assembly in a Dataverse preview environment. Use when: pushing plugin code to an environment, registering message processing steps, updating plugin binaries, registering custom APIs, testing plugin changes in the inner loop. Replaces Plugin Registration Tool (PRT).'
+description: 'Register a plugin package or assembly in a Dataverse dev environment. Use when: pushing plugin code to an environment, registering message processing steps, updating plugin binaries, registering custom APIs, testing plugin changes in the inner loop. Replaces Plugin Registration Tool (PRT).'
 ---
 
 # Register Plugin
 
-Push a plugin binary and register steps/images in a Dataverse preview environment using `Register-Plugin.ps1`.
+Push a plugin binary and register steps/images in a Dataverse dev environment using `Register-Plugin.ps1`.
 
 ## When to Use
 
-- After building a plugin and needing to push it to a preview environment for testing
+- After building a plugin and needing to push it to a dev environment for testing
 - When adding a new message processing step (Create/Update/Delete handler)
 - When registering a custom API
 - During inner-loop development: edit C# → build → register → test
@@ -19,12 +19,12 @@ Push a plugin binary and register steps/images in a Dataverse preview environmen
 | Need | Use instead |
 |------|-------------|
 | Scaffold a net-new plugin project (create .csproj, class, wire into solution) | `scaffold-plugin` |
-| Deploy a full solution ZIP to preview or preview-test | `deploy-solution` |
+| Deploy a full solution ZIP to dev or dev-test | `deploy-solution` |
 | Sync registered steps back to source control | `sync-solution` |
 
 ## Configuration
 
-> Before proceeding, read `deployments/settings/environment-config.json`. Use `solutionAreas[x].previewEnv` and `innerLoopEnvironments[].url` to resolve preview environment URLs. Do not use hardcoded values.
+> Before proceeding, read `deployments/settings/environment-config.json`. Use `solutionAreas[x].devEnv` and `innerLoopEnvironments[].url` to resolve dev environment URLs. Do not use hardcoded values.
 
 ## Scenarios
 
@@ -41,7 +41,7 @@ The plugin project already ships in the parent solution, but you are adding a br
 **Required sequence:**
 
 1. Add the plugin project to the feature solution `.cdsproj` (so the feature build includes it)
-2. Build the feature solution `dotnet build` .cdsproj and deploy it **unmanaged** to the preview environment (this creates/updates the plugin package record in Dataverse, making the new type available)
+2. Build the feature solution `dotnet build` .cdsproj and deploy it **unmanaged** to the dev environment (this creates/updates the plugin package record in Dataverse, making the new type available)
 3. Register the new step, scoping it to the feature solution
 
 See **Procedure → Steps 1, 2, and 4** in that order.
@@ -50,7 +50,7 @@ See **Procedure → Steps 1, 2, and 4** in that order.
 
 Use the `scaffold-plugin` skill first (it covers project creation, solution wiring, build, **and** step registration via Steps 7a–7d). If you have already scaffolded the plugin but skipped step registration, follow **Steps 1 and 4** of this skill in that order:
 
-1. **Step 1** — add to feature solution, build, and deploy unmanaged to preview (makes the plugin type available)
+1. **Step 1** — add to feature solution, build, and deploy unmanaged to dev (makes the plugin type available)
 2. **Step 4** — register the new step and sync the feature solution
 
 Do not skip to Step 2 — there are no pre-existing steps to update for a net-new plugin.
@@ -59,9 +59,9 @@ Do not skip to Step 2 — there are no pre-existing steps to update for a net-ne
 
 ## Procedure
 
-### 1. Add Plugin to Feature Solution and Deploy to Preview
+### 1. Add Plugin to Feature Solution and Deploy to dev
 
-**Required for Scenario B** — before step registration the new plugin type must exist in the environment. Deploy the feature solution unmanaged to preview:
+**Required for Scenario B** — before step registration the new plugin type must exist in the environment. Deploy the feature solution unmanaged to dev:
 
 ```powershell
 # Step 1a — ensure the plugin project is in the feature solution .cdsproj
@@ -70,14 +70,14 @@ Do not skip to Step 2 — there are no pre-existing steps to update for a net-ne
     -componentPath "src\plugins\{solutionFolder}\{PluginProjectDir}\{PluginProject}.csproj"
 
 # Step 1b — build the feature solution ZIP directly from the cdsproj
-# (Use dotnet build on the cdsproj — no need for Build-Solutions.ps1 for preview)
+# (Use dotnet build on the cdsproj — no need for Build-Solutions.ps1 for dev)
 cd src/solutions/{featureSolution}
 dotnet build --configuration Debug
 
-# Step 1c — deploy unmanaged to the preview environment
+# Step 1c — deploy unmanaged to the dev environment
 pac solution import `
     --path "bin/Debug/{featureSolution}.zip" `
-    --environment "{previewEnv_url from innerLoopEnvironments}" `
+    --environment "{devEnv_url from innerLoopEnvironments}" `
     --force-overwrite --publish-changes --activate-plugins
 ```
 
@@ -141,7 +141,7 @@ After the step is registered, sync the feature solution to capture the new `SdkM
 ```powershell
 .platform/.github/workflows/scripts/Sync-Solution.ps1 `
     -solutionName "{featureSolution}" `
-    -environmentUrl "{previewEnv_url from innerLoopEnvironments}"
+    -environmentUrl "{devEnv_url from innerLoopEnvironments}"
 ```
 
 ### 5. Register Custom APIs
@@ -155,7 +155,7 @@ After the step is registered, sync the feature solution to capture the new `SdkM
 
 ## Environment Mapping
 
-Read from `environment-config.json`: `solutionAreas[x].previewEnv` slug → `innerLoopEnvironments[].url` where slug matches.
+Read from `environment-config.json`: `solutionAreas[x].devEnv` slug → `innerLoopEnvironments[].url` where slug matches.
 
 ## Plugin Package Reference
 

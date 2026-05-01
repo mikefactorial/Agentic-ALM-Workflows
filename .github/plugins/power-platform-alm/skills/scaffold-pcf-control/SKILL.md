@@ -19,7 +19,7 @@ Create a new PowerApps Component Framework control and wire it into the solution
 |------|-------------|
 | Scaffold a plugin project | `scaffold-plugin` |
 | Add an existing control to a feature solution | `start-feature` then `register-plugin` |
-| Deploy the built control to preview | `deploy-solution` |
+| Deploy the built control to dev | `deploy-solution` |
 | Register plugin steps (not PCF) | `register-plugin` |
 
 ## Configuration
@@ -117,7 +117,7 @@ module.exports = {
 **CRITICAL**: PCF controls are NOT auto-tracked by the preferred solution. After building:
 
 1. `npm run build` in the control directory
-2. `pac pcf push --publisher-prefix {prefix}` to push to preview environment
+2. `pac pcf push --publisher-prefix {prefix}` to push to dev environment
 3. Manually add the control to your feature solution in make.powerapps.com
 
 ### 7. Verify

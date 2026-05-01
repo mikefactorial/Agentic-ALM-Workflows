@@ -15,12 +15,12 @@ This skill routes requests to the correct specialist skill. Read this first, the
 | `setup-client-repo` | First-time repo setup from template; filling `environment-config.json`; GitHub environments, secrets, branch protection |
 | `start-feature` | Create feature branch and feature solution; set preferred solution; begin inner-loop development |
 | `build-solution` | Build solution ZIPs locally; validate code-first changes compile; pre-build plugins or PCF controls |
-| `deploy-solution` | Deploy unmanaged to preview; deploy managed to preview-test with settings and data; full inner-loop deployment sequence |
+| `deploy-solution` | Deploy unmanaged to dev; deploy managed to dev-test with settings and data; full inner-loop deployment sequence |
 | `sync-solution` | Export solution from Dataverse and commit to source control; refresh deployment settings templates |
-| `register-plugin` | Push plugin binary to preview; register or update message processing steps; register custom APIs |
+| `register-plugin` | Push plugin binary to dev; register or update message processing steps; register custom APIs |
 | `scaffold-plugin` | Create a new plugin project; wire into solution; register the first step |
-| `scaffold-pcf-control` | Create a new PCF control; wire into solution; push to preview |
-| `transport-solution` | Move validated feature from preview to dev; create clean code PR; complete inner-loop handoff |
+| `scaffold-pcf-control` | Create a new PCF control; wire into solution; push to dev |
+| `transport-solution` | Move validated feature from dev to dev; create clean code PR; complete inner-loop handoff |
 | `create-release` | Merge develop → main; build release packages; create GitHub Release |
 | `deploy-package` | Deploy a release package to test or production via `pac package deploy` |
 
@@ -30,7 +30,7 @@ This skill routes requests to the correct specialist skill. Read this first, the
 
 Every ALM task depends on values from `deployments/settings/environment-config.json`. Read it at the start of any skill invocation to resolve:
 - `solutionAreas[].name`, `.prefix`, `.mainSolution` — solution identifiers
-- `solutionAreas[].previewEnv`, `.devEnv` — inner-loop environment slugs
+- `solutionAreas[].devEnv`, `.integrationEnv` — inner-loop environment slugs
 - `innerLoopEnvironments[].url` — resolve URLs from slugs
 - `environments[]` — outer-loop deployment targets
 - `publisher` — namespace prefix for plugins
@@ -40,7 +40,7 @@ Every ALM task depends on values from `deployments/settings/environment-config.j
 
 | Loop | Covers | Skills |
 |------|--------|--------|
-| **Inner loop** | Feature dev → preview → preview-test → dev transport | `start-feature`, `build-solution`, `deploy-solution`, `sync-solution`, `register-plugin`, `scaffold-plugin`, `scaffold-pcf-control`, `transport-solution` |
+| **Inner loop** | Feature dev → dev → dev-test → dev transport | `start-feature`, `build-solution`, `deploy-solution`, `sync-solution`, `register-plugin`, `scaffold-plugin`, `scaffold-pcf-control`, `transport-solution` |
 | **Outer loop** | develop → main → release package → test/prod | `create-release`, `deploy-package` |
 
 Never mix the two loops — `pac package deploy` (outer) is not interchangeable with `pac solution import` (inner).
@@ -73,9 +73,9 @@ After `pac pcf push`, the control must be manually added to the feature solution
 | "start a new feature", "create a feature branch", "begin work on AB####" | `start-feature` |
 | "scaffold a plugin", "create a new plugin", "add server-side logic" | `scaffold-plugin` |
 | "scaffold a PCF control", "create a UI component", "build a custom control" | `scaffold-pcf-control` |
-| "register a plugin step", "push plugin to preview", "update plugin binary" | `register-plugin` |
+| "register a plugin step", "push plugin to dev", "update plugin binary" | `register-plugin` |
 | "build the solution", "compile", "validate the build" | `build-solution` |
-| "deploy to preview", "deploy to preview-test", "import to test environment" | `deploy-solution` |
+| "deploy to dev", "deploy to dev-test", "import to test environment" | `deploy-solution` |
 | "sync the solution", "export from Dataverse", "capture changes from environment" | `sync-solution` |
 | "transport to dev", "promote feature", "complete inner loop", "move to develop" | `transport-solution` |
 | "cut a release", "merge develop to main", "create release package" | `create-release` |

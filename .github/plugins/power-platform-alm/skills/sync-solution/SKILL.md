@@ -16,37 +16,37 @@ Export a solution from a Dataverse environment, unpack it, and commit the metada
 
 | Need | Use instead |
 |------|-------------|
-| Transport a validated feature from preview to dev | `transport-solution` |
-| Deploy a solution to preview or preview-test | `deploy-solution` |
+| Transport a validated feature from dev to dev | `transport-solution` |
+| Deploy a solution to dev or dev-test | `deploy-solution` |
 | Build a solution ZIP | `build-solution` |
-| Create and run a full preview-test deployment | `deploy-solution` |
+| Create and run a full dev-test deployment | `deploy-solution` |
 
 ## Configuration
 
-> Before proceeding, read `deployments/settings/environment-config.json`. Use `solutionAreas[].devEnv` and `innerLoopEnvironments[].url` to determine dev/preview environment slugs and URLs. Do not use hardcoded values.
+> Before proceeding, read `deployments/settings/environment-config.json`. Use `solutionAreas[].integrationEnv` and `innerLoopEnvironments[].url` to determine dev/dev environment slugs and URLs. Do not use hardcoded values.
 
 ## Two Sync Contexts
 
 There are two distinct reasons to sync — use the right one:
 
-### Context A: Inner Loop (preview → feature branch)
+### Context A: Inner Loop (dev → feature branch)
 
-Sync your feature solution FROM preview TO your feature branch during active development. Use the combined **Sync, Build, and Deploy** workflow:
+Sync your feature solution FROM dev TO your feature branch during active development. Use the combined **Sync, Build, and Deploy** workflow:
 
 1. **Actions** → **Sync, Build and Deploy Solution** → **Run workflow**
-2. Select source environment: the preview environment slug for your solution area (read `solutionAreas[x].previewEnv` from `environment-config.json`)
+2. Select source environment: the dev environment slug for your solution area (read `solutionAreas[x].devEnv` from `environment-config.json`)
 3. Enter solution name: your feature solution (e.g., `AB12345_CreateInvoicingApp`)
-4. Enter target environments: the preview-test environment slug for your solution area (read from `environments[]` in `environment-config.json`, slug ending in `-preview-test`)
+4. Enter target environments: the dev-test environment slug for your solution area (read from `environments[]` in `environment-config.json`, slug ending in `-dev-test`)
 5. Enter branch: your feature branch (e.g., `feat/AB12345_CreateInvoicingApp`)
 
-This syncs the feature solution metadata, commits to your feature branch, then builds and deploys to preview-test in one step.
+This syncs the feature solution metadata, commits to your feature branch, then builds and deploys to dev-test in one step.
 
 Alternatively, sync only (without build/deploy):
 
 ```powershell
 .platform/.github/workflows/scripts/Sync-Solution.ps1 `
     -solutionName "{feature_solution}" `
-    -environmentUrl "https://{preview_env}.crm.dynamics.com" `
+    -environmentUrl "https://{dev_env}.crm.dynamics.com" `
     -skipGitCommit
 ```
 
@@ -55,18 +55,18 @@ Alternatively, sync only (without build/deploy):
 After a feature has been transported to dev, sync the main solution FROM dev TO the `develop` branch:
 
 1. **Actions** → **Sync Solution** → **Run workflow**
-2. Select environment: the dev environment slug for your solution area (read `solutionAreas[x].devEnv` from `environment-config.json`)
+2. Select environment: the dev environment slug for your solution area (read `solutionAreas[x].integrationEnv` from `environment-config.json`)
 3. Enter solution name: main solution (e.g., `{solutionPrefix}_{solutionName}` — read from `solutionAreas[x].mainSolution`)
 4. Enter commit message: `chore: sync {solution} from {environment} AB#{WorkItemNumber}` (include `AB#` only when sync is part of a tracked work item; omit for routine post-transport syncs to `develop`)
 5. Enter branch: `develop`
 
-#### Dev environment mapping:
+#### integration environment mapping:
+
+Read from `environment-config.json`: for each solution area, `solutionAreas[x].integrationEnv` is the slug → look up `innerLoopEnvironments[].url` where slug matches.
+
+#### dev environment mapping:
 
 Read from `environment-config.json`: for each solution area, `solutionAreas[x].devEnv` is the slug → look up `innerLoopEnvironments[].url` where slug matches.
-
-#### Preview environment mapping:
-
-Read from `environment-config.json`: for each solution area, `solutionAreas[x].previewEnv` is the slug → look up `innerLoopEnvironments[].url` where slug matches.
 
 ## After Sync
 

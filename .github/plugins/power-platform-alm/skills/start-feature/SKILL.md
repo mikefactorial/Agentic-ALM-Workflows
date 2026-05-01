@@ -19,7 +19,7 @@ Create a feature branch and initialise a corresponding feature solution in Datav
 |------|-------------|
 | Scaffold a net-new plugin project | `scaffold-plugin` |
 | Scaffold a net-new PCF control | `scaffold-pcf-control` |
-| Deploy a feature solution to preview or preview-test | `deploy-solution` |
+| Deploy a feature solution to dev or dev-test | `deploy-solution` |
 | Sync solution changes back to source control | `sync-solution` |
 
 ## Agent Intake
@@ -33,7 +33,7 @@ Before proceeding, gather the following from the user. Ask only for what is miss
 
 ## Configuration
 
-> Before proceeding, read `deployments/settings/environment-config.json`. Use it to determine valid solution area names (`solutionAreas[].name`), preview environment slugs (`solutionAreas[].previewEnv`), preview-test environment slugs (`environments[]` where slug ends in `-preview-test`), and environment URLs. Do not use hardcoded values.
+> Before proceeding, read `deployments/settings/environment-config.json`. Use it to determine valid solution area names (`solutionAreas[].name`), dev environment slugs (`solutionAreas[].devEnv`), dev-test environment slugs (`environments[]` where slug ends in `-dev-test`), and environment URLs. Do not use hardcoded values.
 
 ## Prerequisites
 
@@ -67,7 +67,7 @@ Types: `feat/`, `fix/`, `chore/`, `refactor/`, `docs/`, `test/`
 
 Run `Initialize-FeatureSolution.ps1` from the repo root. The script will:
 
-- Check whether the feature solution already exists in the preview environment
+- Check whether the feature solution already exists in the dev environment
 - **If it does NOT exist**: run `pac solution init` locally and create it in Dataverse
 - **If it already exists**: run `pac solution clone` to pull it locally
 - The feature solution `.cdsproj` starts **empty** — only the components that change or are net-new in this feature are added (see Step 4)
@@ -77,13 +77,13 @@ Run `Initialize-FeatureSolution.ps1` from the repo root. The script will:
 .platform/.github/workflows/scripts/Initialize-FeatureSolution.ps1 `
     -featureSolutionName "AB{####}_{BriefDescription}" `
     -solutionArea "{solutionName}" `
-    -environmentUrl "{previewEnvUrl}"
+    -environmentUrl "{devEnvUrl}"
 ```
 
 **Solution Area ↔ Environment URL:**
 
 - `-solutionArea`: the chosen `solutionAreas[x].name` from `environment-config.json`
-- `-environmentUrl`: look up `solutionAreas[x].previewEnv` → find the matching entry in `innerLoopEnvironments[]` → use `.url`
+- `-environmentUrl`: look up `solutionAreas[x].devEnv` → find the matching entry in `innerLoopEnvironments[]` → use `.url`
 
 The feature solution `.cdsproj` will be created at:
 ```
@@ -94,7 +94,7 @@ src/solutions/{featureSolutionName}/{featureSolutionName}.cdsproj
 
 This ensures all new components you create in Dataverse are automatically tracked in your feature solution:
 
-1. Open [make.powerapps.com](https://make.powerapps.com) → select the preview environment
+1. Open [make.powerapps.com](https://make.powerapps.com) → select the dev environment
 2. In the **Solutions** list, find your feature solution
 3. Click the **...** menu → **Set as preferred solution**
 4. Verify the banner at the top of make.powerapps.com shows your solution name
@@ -132,9 +132,9 @@ If you are changing an existing component, add it to the feature solution so it 
 
 > **IMPORTANT**: The feature solution `.cdsproj` uses `Sdk="AlbanianXrm.CDSProj.Sdk/1.0.9"` — this is required for plugin packages (projects with a `<PackageId>`) to be included in the solution ZIP. Without it, plugin package projects are silently ignored during build and the assembly never lands in Dataverse. `Initialize-FeatureSolution.ps1` sets this automatically; if you create a `.cdsproj` manually, ensure the `Sdk` attribute is present and all `<ProjectReference>` entries include `PrivateAssets="All"`.
 
-### 5. Build and Deploy to Preview (inner loop)
+### 5. Build and Deploy to dev (inner loop)
 
-The feature solution `.cdsproj` contains only the plugins and PCF controls relevant to this feature. Build the feature solution directly from the `.cdsproj`, then import the unmanaged ZIP to preview:
+The feature solution `.cdsproj` contains only the plugins and PCF controls relevant to this feature. Build the feature solution directly from the `.cdsproj`, then import the unmanaged ZIP to dev:
 
 ```powershell
 # From repo root
@@ -142,19 +142,19 @@ The feature solution `.cdsproj` contains only the plugins and PCF controls relev
 cd src/solutions/AB{####}_{BriefDescription}
 dotnet build --configuration Debug --no-incremental
 
-# 2. Deploy as unmanaged to the preview environment
-# (slug and URL from environment-config.json: solutionAreas[x].previewEnv + innerLoopEnvironments[].url)
+# 2. Deploy as unmanaged to the dev environment
+# (slug and URL from environment-config.json: solutionAreas[x].devEnv + innerLoopEnvironments[].url)
 pac solution import `
     --path "bin/Debug/AB{####}_{BriefDescription}.zip" `
-    --environment "{previewEnv_url}" `
+    --environment "{devEnv_url}" `
     --force-overwrite --publish-changes --activate-plugins
 ```
 
-For preview-test validation (before transporting to dev):
+For dev-test validation (before transporting to dev):
 
 ```powershell
 # Use the deploy-solution skill/workflow path so the required sequence is followed:
-# preview unmanaged import -> sync from preview -> rebuild -> preview-test managed import
+# dev unmanaged import -> sync from dev -> rebuild -> dev-test managed import
 ```
 
 Or trigger the `build-deploy-solution` GitHub Actions workflow (no sync required — builds from current branch).
@@ -164,10 +164,10 @@ Or trigger the `build-deploy-solution` GitHub Actions workflow (no sync required
 ## Development Iteration Loop
 
 ```
-1. Make changes in preview (Dataverse + code-first)
+1. Make changes in dev (Dataverse + code-first)
 2. Sync feature solution to feature branch  → sync-solution skill
-3. Build + deploy to preview-test           → deploy-solution skill
-4. Test in preview-test
+3. Build + deploy to dev-test           → deploy-solution skill
+4. Test in dev-test
 5. Repeat until validated
 6. Transport to dev                         → transport-solution skill
 7. Merge feature branch → develop (PR)

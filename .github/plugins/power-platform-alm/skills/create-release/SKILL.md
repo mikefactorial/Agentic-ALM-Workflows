@@ -12,7 +12,7 @@ Guide the outer-loop release process: merge `develop` → `main`, trigger the au
 | Need | Use instead |
 |------|-------------|
 | Deploy a built release package to a specific environment | `deploy-package` |
-| Inner-loop deployment to preview or preview-test | `deploy-solution` |
+| Inner-loop deployment to dev or dev-test | `deploy-solution` |
 | Validate deployment settings without cutting a release | `deploy-solution` (Step 4) |
 
 ## Configuration
@@ -30,7 +30,7 @@ Guide the outer-loop release process: merge `develop` → `main`, trigger the au
 ### 1. Prerequisites Check
 
 Verify before proceeding:
-- All features transported from preview → dev environments
+- All features transported from dev → integration environments
 - All feature branches merged to `develop`
 - `develop` branch passing PR validation checks
 - Deployment settings complete for all target environments

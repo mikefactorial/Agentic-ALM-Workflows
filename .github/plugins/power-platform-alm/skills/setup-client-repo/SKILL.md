@@ -86,16 +86,16 @@ After filling in, it should look like:
       "pluginsSln": "src/plugins/acm_AcmePlatform/AcmeCorp.AcmePlatform.Plugins.sln",
       "corePluginRef": null,
       "controlPreBuildPaths": [],
-      "previewEnv": "acme-preview",
-      "devEnv": "acme-dev"
+      "devEnv": "acme-dev",
+      "integrationEnv": "acme-dev"
     }
   ],
   "innerLoopEnvironments": [
-    { "slug": "acme-preview", "url": "https://acme-pre-acme.crm.dynamics.com/" },
+    { "slug": "acme-dev", "url": "https://acme-pre-acme.crm.dynamics.com/" },
     { "slug": "acme-dev",     "url": "https://acme-dev-acme.crm.dynamics.com/" }
   ],
   "environments": [
-    { "slug": "acme-preview-test", "url": "https://acme-prt-acme.crm.dynamics.com/" },
+    { "slug": "acme-dev-test", "url": "https://acme-prt-acme.crm.dynamics.com/" },
     { "slug": "acme-test",         "url": "https://acme-tst-acme.crm.dynamics.com/" },
     { "slug": "acme-prod",         "url": "https://acme-prd-acme.crm.dynamics.com/" }
   ],
@@ -104,7 +104,7 @@ After filling in, it should look like:
       "name": "AcmePlatform",
       "solutions": ["acm_AcmePlatform"],
       "dataSolution": "acm_AcmePlatform",
-      "environments": ["acme-preview-test", "acme-test", "acme-prod"]
+      "environments": ["acme-dev-test", "acme-test", "acme-prod"]
     }
   ]
 }

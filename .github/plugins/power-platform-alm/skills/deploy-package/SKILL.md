@@ -11,7 +11,7 @@ Deploy a package group from a GitHub Release to a target environment using `pac 
 
 | Need | Use instead |
 |------|-------------|
-| Inner-loop deployment to preview or preview-test | `deploy-solution` |
+| Inner-loop deployment to dev or dev-test | `deploy-solution` |
 | Building the release package before deploying | `create-release` |
 | Deploying only a solution (not a full package) | `deploy-solution` |
 

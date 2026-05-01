@@ -20,7 +20,7 @@ Create a new Dataverse plugin project with correct structure, base class, and so
 |------|-------------|
 | Scaffold a PCF control | `scaffold-pcf-control` |
 | Register a step on an existing plugin project | `register-plugin` |
-| Deploy an already-scaffolded plugin to preview | `deploy-solution` |
+| Deploy an already-scaffolded plugin to dev | `deploy-solution` |
 | Start a feature branch and feature solution first | `start-feature` |
 
 ## Required Information — Gather Before Proceeding
@@ -31,7 +31,7 @@ Before starting, confirm you have all of the following. If anything is missing, 
 |------|--------|
 | Plugin name | User — descriptive name for the feature (e.g., `ContactCreate`) |
 | Solution area | User — which solution area (read from solutionAreas[] in environment-config.json) |
-| Feature solution name | User — the active feature solution in the preview env (e.g., `AB12727_HelloPlugin`) |
+| Feature solution name | User — the active feature solution in the dev env (e.g., `AB12727_HelloPlugin`) |
 | Plugin class description | User — one-line summary of what the plugin does |
 | **Step: Message** | User — `Create`, `Update`, `Delete`, or other SDK message |
 | **Step: Primary entity** | User — logical name of the entity (e.g., `contact`, `slp_sample`) |
@@ -195,7 +195,7 @@ cd {solutionAreas[x].pluginsPath}/{Publisher}.Plugins.{SolutionAreaName}.{Name}
 dotnet build --configuration Release
 ```
 
-### 7. Deploy to Preview and Register the Plugin Step
+### 7. Deploy to dev and Register the Plugin Step
 
 **This step is mandatory — a plugin with no registered step has no effect in Dataverse.**
 
@@ -209,18 +209,18 @@ cd src/solutions/{featureSolution}
 dotnet build --configuration Debug --no-incremental
 ```
 
-#### 7b. Deploy unmanaged to preview
+#### 7b. Deploy unmanaged to dev
 
 This creates the plugin package record in Dataverse, making the plugin type available for step registration:
 
 ```powershell
 pac solution import `
     --path "bin/Debug/{featureSolution}.zip" `
-    --environment "{previewEnv_url}" `
+    --environment "{devEnv_url}" `
     --force-overwrite --publish-changes --activate-plugins
 ```
 
-Resolve `{previewEnv_url}` from `innerLoopEnvironments[].url` in `environment-config.json` using the `previewEnv` slug for this solution area.
+Resolve `{devEnv_url}` from `innerLoopEnvironments[].url` in `environment-config.json` using the `devEnv` slug for this solution area.
 
 #### 7c. Register the step
 
@@ -228,7 +228,7 @@ Use the parameters collected in **Required Information** above:
 
 ```powershell
 .platform/.github/workflows/scripts/Register-Plugin.ps1 `
-    -EnvironmentUrl "{previewEnv_url}" `
+    -EnvironmentUrl "{devEnv_url}" `
     -PluginType "{Publisher}.Plugins.{SolutionAreaName}.{Name}.{PluginClassName}" `
     -Message "{Create|Update|Delete|...}" `
     -PrimaryEntity "{entity_logical_name}" `
@@ -251,7 +251,7 @@ After registration, the new `SdkMessageProcessingSteps/*.xml` entry must be sync
 ```powershell
 .platform/.github/workflows/scripts/Sync-Solution.ps1 `
     -solutionName "{featureSolution}" `
-    -environmentUrl "{previewEnv_url}" `
+    -environmentUrl "{devEnv_url}" `
     -skipGitCommit
 ```
 
