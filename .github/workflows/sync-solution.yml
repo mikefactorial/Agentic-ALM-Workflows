@@ -1,0 +1,104 @@
+name: Sync Solution
+
+# Callable workflow — export + unpack a Dataverse solution to the repository.
+# Triggered by thin callers in solution repos via workflow_call.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment slug to sync from (innerLoopEnvironments[*].slug)'
+        required: true
+        type: string
+      solution_name:
+        description: 'Solution unique name to sync'
+        required: true
+        type: string
+      commit_message:
+        description: 'Git commit message'
+        required: false
+        type: string
+        default: 'chore: automated solution sync'
+      branch_name:
+        description: 'Branch name to commit to'
+        required: false
+        type: string
+        default: 'develop'
+      publish_customizations:
+        description: 'Publish customizations before syncing'
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      APP_ID:
+        required: true
+      APP_PRIVATE_KEY:
+        required: true
+      HOOK_SECRETS:
+        required: false
+
+permissions:
+  id-token: write
+  contents: write
+
+env:
+  HOOK_VARIABLES: ${{ vars.HOOK_VARIABLES }}
+  HOOK_SECRETS: ${{ secrets.HOOK_SECRETS }}
+  DEPLOYMENT_ENVIRONMENTS: ${{ vars.DEPLOYMENT_ENVIRONMENTS }}
+
+jobs:
+  sync-solution:
+    name: Sync Solution to Repository
+    runs-on: windows-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "alm-automation[bot]"
+          git config user.email "alm-automation[bot]@users.noreply.github.com"
+
+      - name: Sync Solution
+        shell: pwsh
+        run: |
+          $syncParams = @{
+            solutionName          = "${{ inputs.solution_name }}"
+            environmentUrl        = "${{ vars.DATAVERSE_URL }}"
+            tenantId              = "${{ vars.AZURE_TENANT_ID }}"
+            clientId              = "${{ vars.DATAVERSE_CLIENT_ID }}"
+            publishCustomizations = $${{ inputs.publish_customizations }}
+            commitMessage         = "${{ inputs.commit_message }}"
+            branchName            = "${{ inputs.branch_name }}"
+          }
+          .platform\.github\workflows\scripts\Sync-Solution.ps1 @syncParams
+
+      - name: Sync Summary
+        if: success()
+        run: |
+          echo "=========================================="
+          echo "✓ Solution Sync: SUCCESS"
+          echo "=========================================="
+          echo "  ✓ Synced '${{ inputs.solution_name }}' from ${{ inputs.environment }}"
+          echo "  ✓ Committed to branch '${{ inputs.branch_name }}'"

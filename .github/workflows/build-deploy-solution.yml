@@ -1,0 +1,220 @@
+name: Build and Deploy Solution
+
+# Callable workflow — build a solution from the current branch and deploy to target environments.
+# Sync the solution from dev first using sync-solution.yml if customizations need to be committed.
+
+on:
+  workflow_call:
+    inputs:
+      solution_name:
+        description: 'Solution unique name to build and deploy'
+        required: true
+        type: string
+      target_environments:
+        description: 'Comma-separated target environment slugs'
+        required: true
+        type: string
+      continue_on_error:
+        description: 'Continue deploying remaining environments if one fails'
+        required: false
+        type: boolean
+        default: false
+      use_upgrade:
+        description: 'Use single-stage upgrade for existing solutions'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      APP_ID:
+        required: true
+      APP_PRIVATE_KEY:
+        required: true
+      HOOK_SECRETS:
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  HOOK_VARIABLES: ${{ vars.HOOK_VARIABLES }}
+  HOOK_SECRETS: ${{ secrets.HOOK_SECRETS }}
+
+jobs:
+  build:
+    name: Build Solution
+    runs-on: windows-latest
+    outputs:
+      solutions: ${{ inputs.solution_name }}
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup Power Platform CLI
+        shell: pwsh
+        run: .platform\.github\workflows\scripts\Install-PacCli.ps1
+
+      - name: Build solution
+        shell: pwsh
+        run: |
+          .platform\.github\workflows\scripts\Build-Solutions.ps1 `
+            -solutionList "${{ inputs.solution_name }}" `
+            -targetEnvironmentList "${{ inputs.target_environments }}" `
+            -artifactsPath "./artifacts/solutions"
+
+      - name: Upload solution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ github.run_number }}
+          path: |
+            ./artifacts/solutions/*.zip
+            ./artifacts/solutions/*_settings.json
+          if-no-files-found: error
+
+  prepare-deployment:
+    name: Prepare Deployment
+    runs-on: windows-latest
+    needs: build
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+
+    steps:
+      - name: Build deployment matrix
+        id: matrix
+        shell: pwsh
+        run: |
+          $environments = "${{ inputs.target_environments }}" -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" } | Sort-Object
+          $solution = "${{ inputs.solution_name }}"
+
+          if ($environments.Count -eq 0) {
+            Write-Error "No environments specified"
+            exit 1
+          }
+
+          $matrixInclude = @()
+          foreach ($env in $environments) {
+            $matrixInclude += @{ environment = $env; solution = $solution }
+          }
+
+          $matrix = @{ include = $matrixInclude }
+          $matrixJson = $matrix | ConvertTo-Json -Compress -Depth 10
+          Write-Host "Deployment matrix: $matrixJson"
+          "matrix=$matrixJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+  deploy:
+    name: Deploy to ${{ matrix.environment }}
+    runs-on: windows-latest
+    needs: [build, prepare-deployment]
+    environment: ${{ matrix.environment }}
+    concurrency:
+      group: deploy-${{ inputs.solution_name }}-${{ matrix.environment }}
+      cancel-in-progress: false
+    strategy:
+      max-parallel: 10
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-deployment.outputs.matrix) }}
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Power Platform CLI
+        shell: pwsh
+        run: .platform\.github\workflows\scripts\Install-PacCli.ps1
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-${{ github.run_number }}
+          path: ./artifacts/solutions
+
+      - name: Deploy solution
+        shell: pwsh
+        env:
+          HOOK_SUMMARY_PATH: ./deployment-summaries/hooks-${{ matrix.solution }}-${{ matrix.environment }}.json
+        run: |
+          .platform\.github\workflows\scripts\Deploy-Solutions.ps1 `
+            -solutionList "${{ matrix.solution }}" `
+            -targetEnvironment "${{ matrix.environment }}" `
+            -environmentUrl "${{ vars.DATAVERSE_URL }}" `
+            -artifactsPath "./artifacts/solutions" `
+            -tenantId "${{ vars.AZURE_TENANT_ID }}" `
+            -clientId "${{ vars.DATAVERSE_CLIENT_ID }}" `
+            -continueOnError $${{ inputs.continue_on_error }} `
+            -useUpgrade $${{ inputs.use_upgrade }}
+
+      - name: Upload hook summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hook-summary-${{ matrix.solution }}-${{ matrix.environment }}
+          path: ./deployment-summaries/hooks-${{ matrix.solution }}-${{ matrix.environment }}.json
+          if-no-files-found: warn
+
+  workflow-summary:
+    name: Workflow Summary
+    runs-on: windows-latest
+    needs: [build, prepare-deployment, deploy]
+    if: always()
+
+    steps:
+      - name: Download hook summaries
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          pattern: hook-summary-*
+          path: ./hook-summaries
+          merge-multiple: true
+
+      - name: Generate summary
+        shell: pwsh
+        run: |
+          "## Build & Deploy Complete! :rocket:" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "### Workflow Information" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- Run: #${{ github.run_number }}" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- Solution: ${{ inputs.solution_name }}" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- Targets: ${{ inputs.target_environments }}" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          "- Branch: ${{ github.ref_name }}" | Add-Content -Path $env:GITHUB_STEP_SUMMARY

@@ -1,0 +1,129 @@
+name: Deploy Package
+
+# Callable workflow — outer-loop package deployment using pac package deploy.
+# Downloads a release asset and deploys using Package Deployer with merged settings.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Target environment slug (environments[*].slug)'
+        required: true
+        type: string
+      package:
+        description: 'Package group name (packageGroups[*].name)'
+        required: true
+        type: string
+      release_tag:
+        description: 'Release tag to deploy (e.g. v2026.04.05.1). Leave blank for latest.'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      APP_ID:
+        required: true
+      APP_PRIVATE_KEY:
+        required: true
+      HOOK_SECRETS:
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+jobs:
+  deploy:
+    name: 'Deploy ${{ inputs.package }} → ${{ inputs.environment }}'
+    runs-on: windows-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Resolve release tag and package solutions
+        id: resolve
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $releaseTag = '${{ inputs.release_tag }}'.Trim()
+          if ([string]::IsNullOrEmpty($releaseTag)) {
+            $releaseTag = gh release view --repo '${{ github.repository }}' --json tagName --jq '.tagName'
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($releaseTag)) {
+              Write-Error "Could not resolve latest release tag."
+              exit 1
+            }
+            Write-Host "Resolved latest release: $releaseTag" -ForegroundColor Green
+          }
+          else {
+            Write-Host "Using specified release: $releaseTag" -ForegroundColor Green
+          }
+          "release_tag=$releaseTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          $config = Get-Content 'deployments/settings/environment-config.json' -Raw | ConvertFrom-Json
+          $group  = $config.packageGroups | Where-Object { $_.name -eq '${{ inputs.package }}' }
+          if (-not $group) {
+            Write-Error "Package group '${{ inputs.package }}' not found in environment-config.json"
+            exit 1
+          }
+          $solutions = $group.solutions -join ','
+          Write-Host "Solutions: $solutions" -ForegroundColor Green
+          "solutions=$solutions" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Setup Power Platform CLI
+        shell: pwsh
+        run: .platform\.github\workflows\scripts\Install-PacCli.ps1
+
+      - name: Download release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $package     = '${{ inputs.package }}'
+          $environment = '${{ inputs.environment }}'
+          $releaseTag  = '${{ steps.resolve.outputs.release_tag }}'
+
+          Write-Host "Downloading assets for $package → $environment from $releaseTag"
+          New-Item -ItemType Directory -Force -Path './release-assets' | Out-Null
+
+          gh release download $releaseTag `
+            --repo    '${{ github.repository }}' `
+            --pattern "${package}_Managed_*.zip" `
+            --pattern "*_${environment}_settings.json" `
+            --dir     './release-assets' `
+            --clobber
+
+          Write-Host "Downloaded:"
+          Get-ChildItem './release-assets' | ForEach-Object { Write-Host "  $($_.Name)" }
+
+      - name: Deploy package
+        shell: pwsh
+        run: |
+          .platform\.github\workflows\scripts\Deploy-Package.ps1 `
+            -packageGroup      '${{ inputs.package }}' `
+            -solutions         '${{ steps.resolve.outputs.solutions }}' `
+            -targetEnvironment '${{ inputs.environment }}' `
+            -environmentUrl    '${{ vars.DATAVERSE_URL }}' `
+            -tenantId          '${{ vars.AZURE_TENANT_ID }}' `
+            -clientId          '${{ vars.DATAVERSE_CLIENT_ID }}' `
+            -artifactsPath     './release-assets'

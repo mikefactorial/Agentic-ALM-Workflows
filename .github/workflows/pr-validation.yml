@@ -1,0 +1,338 @@
+name: Validate Pull Request Changes
+
+# Callable workflow — validate plugin/PCF/solution changes in a pull request.
+# Detects what changed, builds only affected components, runs solution checker.
+
+on:
+  workflow_call:
+    inputs:
+      base_ref:
+        description: 'PR base branch ref'
+        required: true
+        type: string
+      head_ref:
+        description: 'PR head branch ref'
+        required: true
+        type: string
+      pr_number:
+        description: 'Pull request number (for annotations)'
+        required: false
+        type: string
+        default: ''
+      dev_environment:
+        description: 'Dev environment slug for solution validation (e.g. myapp-dev)'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      APP_ID:
+        required: true
+      APP_PRIVATE_KEY:
+        required: true
+      HOOK_SECRETS:
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  id-token: write
+
+env:
+  HOOK_VARIABLES: ${{ vars.HOOK_VARIABLES }}
+  HOOK_SECRETS: ${{ secrets.HOOK_SECRETS }}
+
+jobs:
+  detect-changes:
+    name: Detect Changed Components
+    runs-on: windows-latest
+    outputs:
+      plugins_changed: ${{ steps.detect.outputs.plugins_changed }}
+      plugins_exist: ${{ steps.detect.outputs.plugins_exist }}
+      controls_changed: ${{ steps.detect.outputs.controls_changed }}
+      controls_exist: ${{ steps.detect.outputs.controls_exist }}
+      control_groups: ${{ steps.detect.outputs.control_groups }}
+      solutions_exist: ${{ steps.detect.outputs.solutions_exist }}
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Detect component changes
+        id: detect
+        shell: pwsh
+        run: >-
+          .platform\.github\workflows\scripts\Detect-ChangedComponents.ps1
+          -BaseBranch "${{ inputs.base_ref }}"
+          -HeadBranch "${{ inputs.head_ref }}"
+
+  build-plugins:
+    name: Build Plugins
+    runs-on: windows-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.plugins_exist == 'true' && needs.detect-changes.outputs.plugins_changed == 'true'
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v2
+        with:
+          nuget-version: 'latest'
+
+      - name: Build plugins and run tests
+        shell: pwsh
+        run: |
+          .platform\.github\workflows\scripts\Build-Plugins.ps1 `
+            -artifactsPath "./artifacts/plugins" `
+            -testResultsPath "./artifacts/test-results"
+
+      - name: Publish test results
+        if: always() && hashFiles('./artifacts/test-results/*.trx') != ''
+        uses: dorny/test-reporter@v1
+        with:
+          name: Plugin Test Results
+          path: ./artifacts/test-results/*.trx
+          reporter: dotnet-trx
+          fail-on-error: false
+
+  build-controls:
+    name: Build PCF Controls (${{ matrix.group }})
+    runs-on: windows-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.controls_exist == 'true' && needs.detect-changes.outputs.controls_changed == 'true' && needs.detect-changes.outputs.control_groups != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        group: ${{ fromJson(needs.detect-changes.outputs.control_groups) }}
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'src/controls/${{ matrix.group }}/**/package-lock.json'
+
+      - name: Build PCF controls
+        shell: pwsh
+        run: |
+          .platform\.github\workflows\scripts\Build-Controls.ps1 `
+            -projectFilter "${{ matrix.group }}" `
+            -artifactsPath "./artifacts/controls" `
+            -testResultsPath "./artifacts/test-results"
+
+      - name: Publish PCF test results
+        if: always() && hashFiles('./artifacts/test-results/*.junit.xml') != ''
+        uses: dorny/test-reporter@v1
+        with:
+          name: PCF Control Test Results (${{ matrix.group }})
+          path: ./artifacts/test-results/*.junit.xml
+          reporter: jest-junit
+          fail-on-error: false
+
+  build-solutions:
+    name: Build Changed Solutions
+    runs-on: windows-latest
+    needs: [detect-changes, build-plugins, build-controls]
+    if: >-
+      ${{
+        always() &&
+        needs.detect-changes.result == 'success' &&
+        needs.detect-changes.outputs.solutions_exist == 'true' &&
+        (needs.build-plugins.result == 'success' || needs.build-plugins.result == 'skipped') &&
+        (needs.build-controls.result == 'success' || needs.build-controls.result == 'skipped')
+      }}
+    environment: ${{ inputs.dev_environment }}
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v2
+        with:
+          nuget-version: 'latest'
+
+      - name: Setup Power Platform CLI
+        shell: pwsh
+        run: .platform\.github\workflows\scripts\Install-PacCli.ps1
+
+      - name: Detect changed solutions
+        id: changed-solutions
+        shell: pwsh
+        run: >-
+          .platform\.github\workflows\scripts\Detect-ChangedSolutions.ps1
+          -BaseBranch "${{ inputs.base_ref }}"
+          -HeadBranch "${{ inputs.head_ref }}"
+
+      - name: Validate deployment settings
+        if: steps.changed-solutions.outputs.has_changes == 'true'
+        shell: pwsh
+        run: >-
+          .platform\.github\workflows\scripts\Validate-DeploymentSettings.ps1
+          -SolutionList "${{ steps.changed-solutions.outputs.solution_list }}"
+          -TargetEnvironmentList "${{ vars.DEPLOYMENT_ENVIRONMENTS }}"
+
+      - name: Build changed solutions
+        if: steps.changed-solutions.outputs.has_changes == 'true'
+        shell: pwsh
+        run: |
+          .platform\.github\workflows\scripts\Build-Solutions.ps1 `
+            -solutionList "${{ steps.changed-solutions.outputs.solution_list }}" `
+            -targetEnvironmentList "${{ vars.DEPLOYMENT_ENVIRONMENTS }}" `
+            -artifactsPath "./artifacts/solutions"
+
+      - name: Run Solution Checker
+        if: steps.changed-solutions.outputs.has_changes == 'true'
+        shell: pwsh
+        run: |
+          . .platform\.github\workflows\scripts\PowerPlatformClient.ps1
+          .platform\.github\workflows\scripts\Run-SolutionChecker.ps1 `
+            -solutionList "${{ steps.changed-solutions.outputs.solution_list }}" `
+            -artifactsPath "./artifacts/solutions" `
+            -resultsPath "./artifacts/solution-checker" `
+            -environmentUrl "${{ vars.DATAVERSE_URL }}" `
+            -tenantId "${{ vars.AZURE_TENANT_ID }}" `
+            -clientId "${{ vars.DATAVERSE_CLIENT_ID }}" `
+            -writeToSummary $true `
+            -highSeverityExceptions "${{ vars.SOLUTION_CHECKER_HIGH_SEVERITY_EXCEPTIONS }}"
+
+      - name: Upload solution checker results
+        if: steps.changed-solutions.outputs.has_changes == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: solution-checker-results
+          path: ./artifacts/solution-checker/
+          if-no-files-found: ignore
+
+      - name: Upload solution artifacts
+        if: steps.changed-solutions.outputs.has_changes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: solution-packages-pr
+          path: ./artifacts/solutions/*.zip
+          if-no-files-found: ignore
+
+  validation-summary:
+    name: Validation Summary
+    runs-on: windows-latest
+    needs: [build-plugins, build-controls, build-solutions]
+    if: always()
+
+    steps:
+      - name: Generate validation summary
+        shell: pwsh
+        run: |
+          $allSuccess = $true
+          $summaryLines = @()
+          $summaryLines += "# PR Validation Summary"
+          $summaryLines += ""
+          $summaryLines += "## Build Results"
+          $summaryLines += ""
+
+          foreach ($job in @(
+            @{ name = 'Plugin Build';    result = '${{ needs.build-plugins.result }}' },
+            @{ name = 'PCF Controls Build'; result = '${{ needs.build-controls.result }}' },
+            @{ name = 'Solutions Build'; result = '${{ needs.build-solutions.result }}' }
+          )) {
+            if ($job.result -eq 'skipped') {
+              $summaryLines += "- ⚪ **$($job.name)**: Skipped (no changes)"
+            } elseif ($job.result -ne 'success') {
+              $summaryLines += "- ❌ **$($job.name)**: Failed"
+              $allSuccess = $false
+            } else {
+              $summaryLines += "- ✅ **$($job.name)**: Passed"
+            }
+          }
+
+          $summaryLines | ForEach-Object { Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $_ }
+          if (-not $allSuccess) { exit 1 }

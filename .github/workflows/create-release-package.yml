@@ -1,0 +1,325 @@
+name: Build and Create Release Package
+
+# Callable workflow — build all deployment packages and create a GitHub Release.
+# Triggered by thin callers in solution repos (push to main + workflow_dispatch).
+# Reads all package groups, solutions, and environments from environment-config.json.
+
+on:
+  workflow_call:
+    inputs:
+      package_version:
+        description: 'Version override (e.g. 2026.04.17.1). Leave blank to auto-calculate.'
+        required: false
+        type: string
+        default: ''
+      create_release:
+        description: 'Create a GitHub Release with the package artifacts'
+        required: false
+        type: boolean
+        default: true
+      draft_release:
+        description: 'Create release as a draft'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      APP_ID:
+        required: true
+      APP_PRIVATE_KEY:
+        required: true
+
+concurrency:
+  group: release-package-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+  actions: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  check-changes:
+    name: Check for Releasable Changes
+    runs-on: windows-latest
+    outputs:
+      has_changes: ${{ steps.detect.outputs.has_changes }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes in src/ and deployments/
+        id: detect
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_call' -and '${{ github.event.inputs.package_version }}' -ne '') {
+            "has_changes=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
+          }
+
+          $previousTag = git tag --list 'v*' --sort=-version:refname 2>$null | Select-Object -First 1
+
+          if (-not $previousTag) {
+            Write-Host "No previous release tag — first release, proceeding."
+            "has_changes=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
+          }
+
+          Write-Host "Comparing against: $previousTag"
+          $changedFiles = git diff --name-only "$previousTag..HEAD" -- src/ deployments/ 2>$null
+          if ($changedFiles) {
+            Write-Host "Releasable changes detected."
+            "has_changes=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } else {
+            Write-Host "No changes since $previousTag — skipping release build."
+            "has_changes=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+  build-package:
+    name: Build Deployment Package
+    runs-on: windows-latest
+    needs: check-changes
+    if: needs.check-changes.outputs.has_changes == 'true'
+    outputs:
+      package_version: ${{ steps.build.outputs.package_version }}
+      package_tag:     ${{ steps.build.outputs.package_tag }}
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+        with:
+          nuget-version: 'latest'
+
+      - name: Restore NuGet packages
+        shell: pwsh
+        run: |
+          $config = Get-Content 'deployments/settings/environment-config.json' -Raw | ConvertFrom-Json
+          $slnPaths = $config.solutionAreas | Where-Object { $_.pluginsSln } | Select-Object -ExpandProperty pluginsSln
+          foreach ($sln in $slnPaths) {
+            Write-Host "Restoring $sln..."
+            nuget restore ($sln -replace '/', '\')
+          }
+
+      - name: Build PCF component dependencies
+        shell: pwsh
+        run: |
+          $config  = Get-Content 'deployments/settings/environment-config.json' -Raw | ConvertFrom-Json
+          $pcfDeps = @($config.solutionAreas | ForEach-Object { $_.controlPreBuildPaths } | Where-Object { $_ })
+          if ($pcfDeps.Count -eq 0) {
+            Write-Host "No PCF pre-build dependencies defined — skipping."
+            exit 0
+          }
+          foreach ($dep in $pcfDeps) {
+            $localPath = $dep -replace '/', '\'
+            Write-Host "Building $localPath..."
+            Push-Location $localPath
+            npm install
+            npm run build
+            Pop-Location
+          }
+
+      - name: Build Package
+        id: build
+        shell: pwsh
+        run: |
+          $splat = @{ ArtifactsPath = './artifacts/package'; Configuration = 'Release' }
+          $version = '${{ inputs.package_version }}'
+          if (-not [string]::IsNullOrWhiteSpace($version)) { $splat.PackageVersion = $version }
+          .platform\.github\workflows\scripts\Build-Package.ps1 @splat
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-package
+          path: artifacts/package/
+          if-no-files-found: error
+
+      - name: Generate Deployment Settings
+        shell: pwsh
+        run: |
+          $packageVersion = '${{ steps.build.outputs.package_version }}'
+          $outputDir      = './artifacts/settings'
+          New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+
+          $config    = Get-Content 'deployments/settings/environment-config.json' -Raw | ConvertFrom-Json
+          $generated = 0; $skipped = 0
+          $pairs     = [System.Collections.Generic.List[object]]::new()
+          $seen      = [System.Collections.Generic.HashSet[string]]::new()
+
+          foreach ($group in $config.packageGroups) {
+            $groupEnvs = @($group.environments)
+            if ($groupEnvs.Count -eq 0) { continue }
+            foreach ($solution in $group.solutions) {
+              foreach ($env in $groupEnvs) {
+                $key = "${solution}:${env}"
+                if ($seen.Add($key)) { $pairs.Add([PSCustomObject]@{ solution = $solution; environment = $env }) }
+              }
+            }
+          }
+
+          foreach ($pair in $pairs) {
+            $solution     = $pair.solution
+            $env          = $pair.environment
+            $templatePath = "deployments\settings\templates\${solution}_template.json"
+            if (-not (Test-Path $templatePath)) { $skipped++; continue }
+
+            $outputFile = Join-Path $outputDir "${solution}_${packageVersion}_${env}_settings.json"
+            try {
+              .platform\.github\workflows\scripts\Generate-DeploymentSettings.ps1 `
+                -solutionName $solution -targetEnvironment $env `
+                -templatePath $templatePath -outputPath $outputFile `
+                -configPath 'deployments\settings'
+              Write-Host "  ✓ $solution / $env" -ForegroundColor Green
+              $generated++
+            }
+            catch { Write-Warning "  Skipped $solution / ${env}: $($_.Exception.Message)"; $skipped++ }
+          }
+          Write-Host "Generated: $generated  Skipped: $skipped"
+
+      - name: Upload deployment settings
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-settings
+          path: artifacts/settings/*_settings.json
+          if-no-files-found: ignore
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: windows-latest
+    needs: [check-changes, build-package]
+    if: |
+      needs.check-changes.outputs.has_changes == 'true' && inputs.create_release == true
+
+    env:
+      PACKAGE_VERSION: ${{ needs.build-package.outputs.package_version }}
+      PACKAGE_TAG:     ${{ needs.build-package.outputs.package_tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-package
+          path: release-assets
+
+      - name: Download deployment settings
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-settings
+          path: release-assets/settings
+        continue-on-error: true
+
+      - name: Generate Changelog
+        id: changelog
+        shell: pwsh
+        run: |
+          $previousTag = git tag --list 'v*' --sort=-version:refname 2>$null | Select-Object -First 1
+          $range       = if ($previousTag) { "$previousTag..HEAD" } else { "" }
+          $rangeArgs   = if ($range) { @($range) } else { @() }
+          $changelogFile = 'changelog-fragment.md'
+          Set-Content $changelogFile '' -NoNewline
+
+          function Write-Section {
+            param($File, $Header, $Items)
+            if ($Items) {
+              Add-Content $File "### $Header"; Add-Content $File ""
+              $Items | ForEach-Object { Add-Content $File "- $_" }; Add-Content $File ""
+            }
+          }
+
+          $feats     = git log @rangeArgs --pretty=format:"%s (%h)" --grep="^feat"     --no-merges 2>$null | ForEach-Object { $_ -replace '^feat\(([^)]*?)\): ','**$1**: ' -replace '^feat: ','' }
+          $fixes     = git log @rangeArgs --pretty=format:"%s (%h)" --grep="^fix"      --no-merges 2>$null | ForEach-Object { $_ -replace '^fix\(([^)]*?)\): ','**$1**: '  -replace '^fix: ','' }
+          $refactors = git log @rangeArgs --pretty=format:"%s (%h)" --grep="^refactor" --no-merges 2>$null | ForEach-Object { $_ -replace '^refactor\(([^)]*?)\): ','**$1**: ' -replace '^refactor: ','' }
+          $global:LASTEXITCODE = 0
+
+          Write-Section $changelogFile "✨ Features" $feats
+          Write-Section $changelogFile "🐛 Bug Fixes" $fixes
+          Write-Section $changelogFile "♻️ Refactors" $refactors
+          "has_changelog=$(if ((Get-Item $changelogFile).Length -gt 0) { 'true' } else { 'false' })" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build Release Notes
+        shell: pwsh
+        run: |
+          $ver    = '${{ env.PACKAGE_VERSION }}'
+          $sha    = '${{ github.sha }}'
+          $branch = '${{ github.ref_name }}'
+          $runUrl = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+
+          $config  = Get-Content 'deployments/settings/environment-config.json' -Raw | ConvertFrom-Json
+          $lines   = [System.Collections.Generic.List[string]]::new()
+
+          $lines.Add("## Release $ver"); $lines.Add("")
+          $lines.Add("Built from commit ``$sha`` on branch ``$branch``."); $lines.Add(""); $lines.Add("---"); $lines.Add("")
+
+          if ((Test-Path 'changelog-fragment.md') -and (Get-Item 'changelog-fragment.md').Length -gt 0) {
+            Get-Content 'changelog-fragment.md' | ForEach-Object { $lines.Add($_) }
+          }
+
+          $lines.Add("### Packages"); $lines.Add("")
+          $lines.Add("| Package | Solutions |"); $lines.Add("|---|---|")
+          foreach ($group in $config.packageGroups) {
+            $solutions = $group.solutions -join ', '
+            $lines.Add("| ``$($group.name)_$ver.zip`` | $solutions |")
+          }
+          $lines.Add("")
+          $lines.Add("Each package is available in unmanaged and managed editions.")
+          $lines.Add(""); $lines.Add("---"); $lines.Add("")
+          $lines.Add("🤖 Generated by GitHub Actions · [Workflow run]($runUrl)")
+
+          Set-Content 'release-notes.md' ($lines -join "`n") -Encoding utf8
+
+      - name: Create Release
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $draftFlag = if ('${{ inputs.draft_release }}' -eq 'true') { '--draft' } else { $null }
+          $tag    = '${{ env.PACKAGE_TAG }}'
+          $ver    = '${{ env.PACKAGE_VERSION }}'
+          $sha    = '${{ github.sha }}'
+
+          $releaseZips   = @(Get-ChildItem 'release-assets' -Filter '*.zip' | Sort-Object Name | Select-Object -ExpandProperty FullName)
+          $settingsFiles = @(if (Test-Path 'release-assets/settings') { Get-ChildItem 'release-assets/settings' -Filter '*_settings.json' | Select-Object -ExpandProperty FullName })
+
+          $createArgs = @('release', 'create', $tag, '--title', "Release $ver", '--notes-file', 'release-notes.md', '--target', $sha) + $releaseZips + $settingsFiles
+          if ($draftFlag) { $createArgs += $draftFlag }
+
+          gh @createArgs
+          Write-Host "✓ Release $tag created."
