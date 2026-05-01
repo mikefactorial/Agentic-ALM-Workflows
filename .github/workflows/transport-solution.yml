@@ -1,0 +1,224 @@
+name: Transport Solution
+
+# Callable workflow — transport feature solution components from dev to integration.
+# Phase 1 (export-solution): exports from source env and uploads ZIP artifact.
+# Phase 2 (import-and-copy): downloads ZIP, imports to target, copies components.
+# Phase 3 (sync-solution): optionally syncs the target solution back to the repo.
+
+on:
+  workflow_call:
+    inputs:
+      source_environment:
+        description: 'Source environment slug to export from (innerLoopEnvironments[*].slug)'
+        required: true
+        type: string
+      target_environment:
+        description: 'Target environment slug to import to (innerLoopEnvironments[*].slug)'
+        required: true
+        type: string
+      source_solution_name:
+        description: 'Source solution unique name to export'
+        required: true
+        type: string
+      target_solution_name:
+        description: 'Target solution unique name to copy components into'
+        required: true
+        type: string
+      sync_target_solution:
+        description: 'Sync target solution to repository after transport'
+        required: false
+        type: boolean
+        default: true
+      sync_commit_message:
+        description: 'Commit message for solution sync (if sync is enabled)'
+        required: false
+        type: string
+        default: 'chore: automated solution sync after transport'
+      sync_branch_name:
+        description: 'Branch name for solution sync (if sync is enabled)'
+        required: false
+        type: string
+        default: 'develop'
+      publish_customizations:
+        description: 'Publish customizations before exporting from source environment'
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      APP_ID:
+        required: true
+      APP_PRIVATE_KEY:
+        required: true
+      HOOK_SECRETS:
+        required: false
+
+# Ensure only one transport runs at a time
+concurrency:
+  group: transport-solution-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: write
+  actions: read
+
+env:
+  HOOK_VARIABLES: ${{ vars.HOOK_VARIABLES }}
+  HOOK_SECRETS: ${{ secrets.HOOK_SECRETS }}
+
+jobs:
+  export-solution:
+    name: Export from Source
+    runs-on: windows-latest
+    environment: ${{ inputs.source_environment }}
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Export Solution
+        shell: pwsh
+        run: |
+          .platform\.github\workflows\scripts\Transport-Solution.ps1 `
+            -Phase Export `
+            -sourceSolutionName "${{ inputs.source_solution_name }}" `
+            -sourceEnvironmentUrl "${{ vars.DATAVERSE_URL }}" `
+            -solutionZipPath "${{ github.workspace }}/solution-export/${{ inputs.source_solution_name }}.zip" `
+            -tenantId "${{ vars.AZURE_TENANT_ID }}" `
+            -clientId "${{ vars.DATAVERSE_CLIENT_ID }}" `
+            -publishCustomizations:$${{ inputs.publish_customizations }}
+
+      - name: Upload solution artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: solution-${{ inputs.source_solution_name }}
+          path: solution-export/*.zip
+
+  import-and-copy:
+    name: Import to Target & Copy Components
+    runs-on: windows-latest
+    environment: ${{ inputs.target_environment }}
+    needs: export-solution
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Download solution artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: solution-${{ inputs.source_solution_name }}
+          path: solution-export
+
+      - name: Import Solution and Copy Components
+        shell: pwsh
+        run: |
+          .platform\.github\workflows\scripts\Transport-Solution.ps1 `
+            -Phase Import `
+            -sourceSolutionName "${{ inputs.source_solution_name }}" `
+            -targetSolutionName "${{ inputs.target_solution_name }}" `
+            -targetEnvironmentUrl "${{ vars.DATAVERSE_URL }}" `
+            -solutionZipPath "${{ github.workspace }}/solution-export/${{ inputs.source_solution_name }}.zip" `
+            -tenantId "${{ vars.AZURE_TENANT_ID }}" `
+            -clientId "${{ vars.DATAVERSE_CLIENT_ID }}"
+
+      - name: Transport Summary
+        if: success()
+        run: |
+          echo "=========================================="
+          echo "✓ Solution Transport: SUCCESS"
+          echo "=========================================="
+          echo "  ✓ Exported '${{ inputs.source_solution_name }}' from ${{ inputs.source_environment }}"
+          echo "  ✓ Imported '${{ inputs.source_solution_name }}' to ${{ inputs.target_environment }}"
+          echo "  ✓ Copied components to '${{ inputs.target_solution_name }}'"
+
+  sync-solution:
+    name: Sync Target Solution to Repository
+    runs-on: windows-latest
+    environment: ${{ inputs.target_environment }}
+    needs: import-and-copy
+    if: ${{ inputs.sync_target_solution == true }}
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "alm-automation[bot]"
+          git config user.email "alm-automation[bot]@users.noreply.github.com"
+
+      - name: Sync Solution
+        shell: pwsh
+        run: |
+          .platform\.github\workflows\scripts\Sync-Solution.ps1 `
+            -solutionName "${{ inputs.target_solution_name }}" `
+            -environmentUrl "${{ vars.DATAVERSE_URL }}" `
+            -commitMessage "${{ inputs.sync_commit_message }}" `
+            -branchName "${{ inputs.sync_branch_name }}" `
+            -tenantId "${{ vars.AZURE_TENANT_ID }}" `
+            -clientId "${{ vars.DATAVERSE_CLIENT_ID }}"
+
+      - name: Sync Summary
+        if: success()
+        run: |
+          echo "=========================================="
+          echo "✓ Solution Sync: SUCCESS"
+          echo "=========================================="
+          echo "  ✓ Synced '${{ inputs.target_solution_name }}' to repository"
+          echo "  ✓ Committed to branch '${{ inputs.sync_branch_name }}'"
