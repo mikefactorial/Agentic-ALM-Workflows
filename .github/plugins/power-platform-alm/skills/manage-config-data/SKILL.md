@@ -57,38 +57,109 @@ If `deployments/data/{mainSolution}/ConfigData.xml` does not yet exist, create i
 
 A ConfigData.xml schema defines which entities and fields to export. Create it by hand for simple cases, or generate it from the Configuration Migration Tool for complex entity graphs.
 
-### Simple hand-crafted schema example
+### Schema format reference
 
-For a contacts schema:
+The schema XML must match this structure exactly. Use `pac tool cmt` (Configuration Migration Tool) to generate it, or hand-craft it using the template below.
+
+**Entity element attributes:**
+
+| Attribute | Required | Description |
+|-----------|----------|-------------|
+| `name` | ✅ | Logical name of the Dataverse table (e.g. `exa_country`) |
+| `displayname` | ✅ | Human-readable label |
+| `etc` | ✅ | Entity type code — find it in the CMT or Dataverse metadata |
+| `primaryidfield` | ✅ | Logical name of the primary key field (e.g. `exa_countryid`) |
+| `primarynamefield` | ✅ | Logical name of the primary name field (e.g. `exa_name`) |
+| `disableplugins` | ✅ | `false` to let plugins run during import; `true` to suppress them |
+
+**Field element types:**
+
+| `type` value | Used for |
+|---|---|
+| `string` | Text fields |
+| `guid` | Primary key field (`primaryKey="true"`) |
+| `datetime` | Date/time fields |
+| `number` | Integer fields |
+| `bigint` | Version number, large integers |
+| `bool` | Boolean (Two Option) fields |
+| `state` | `statecode` field |
+| `status` | `statuscode` field |
+| `entityreference` | Lookup fields — requires `lookupType="{target-entity-name}"` |
+| `owner` | `ownerid` field (special lookup — no `lookupType` needed) |
+
+**Cross-entity lookups** — when entity B references entity A, list entity A first in the schema so import order is correct.
+
+### Real-world schema example (two related entities)
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <entities>
-  <entity name="contact" displayname="Contact" etc="2">
+
+  <!-- Entity 1: Country (no dependencies — listed first) -->
+  <entity name="exa_country" displayname="Country" etc="10808"
+          primaryidfield="exa_countryid" primarynamefield="exa_name" disableplugins="false">
     <fields>
-      <field displayname="First Name"    name="firstname"    type="String" primaryKey="false" />
-      <field displayname="Last Name"     name="lastname"     type="String" primaryKey="false" />
-      <field displayname="Email Address" name="emailaddress1" type="String" primaryKey="false" />
+      <!-- Primary key — type="guid" + primaryKey="true" -->
+      <field displayname="Country"              name="exa_countryid"          type="guid"          primaryKey="true" />
+      <!-- Custom fields — mark customfield="true" -->
+      <field displayname="Name"                 name="exa_name"               type="string"        customfield="true" />
+      <field displayname="Abbreviation"         name="exa_abbreviation"       type="string"        customfield="true" />
+      <field displayname="Postal Code Required" name="exa_postalcoderequired" type="bool"          customfield="true" />
+      <field displayname="State Required"       name="exa_staterequired"      type="bool"          customfield="true" />
+      <!-- Standard system fields -->
+      <field displayname="Status"               name="statecode"              type="state" />
+      <field displayname="Status Reason"        name="statuscode"             type="status" />
+      <field displayname="Owner"                name="ownerid"                type="owner" />
+      <field displayname="Owning Business Unit" name="owningbusinessunit"     type="entityreference" lookupType="businessunit" />
+      <field displayname="Owning User"          name="owninguser"             type="entityreference" lookupType="systemuser" />
+      <!-- Audit fields — include in schema, will be omitted in hand-crafted data.xml -->
+      <field displayname="Created By"           name="createdby"              type="entityreference" lookupType="systemuser" />
+      <field displayname="Created On"           name="createdon"              type="datetime" />
+      <field displayname="Modified By"          name="modifiedby"             type="entityreference" lookupType="systemuser" />
+      <field displayname="Modified On"          name="modifiedon"             type="datetime" />
     </fields>
-    <filter/>
+    <relationships/>
   </entity>
+
+  <!-- Entity 2: State (depends on Country — listed after) -->
+  <entity name="exa_state" displayname="State" etc="10822"
+          primaryidfield="exa_stateid" primarynamefield="exa_name" disableplugins="false">
+    <fields>
+      <field displayname="State"                name="exa_stateid"            type="guid"          primaryKey="true" />
+      <field displayname="Name"                 name="exa_name"               type="string"        customfield="true" />
+      <field displayname="Abbreviation"         name="exa_abbreviation"       type="string"        customfield="true" />
+      <!-- Cross-entity lookup: lookupType must match the entity name above -->
+      <field displayname="Country"              name="exa_countryid"          type="entityreference" lookupType="exa_country" customfield="true" />
+      <field displayname="Status"               name="statecode"              type="state" />
+      <field displayname="Status Reason"        name="statuscode"             type="status" />
+      <field displayname="Owner"                name="ownerid"                type="owner" />
+      <field displayname="Owning Business Unit" name="owningbusinessunit"     type="entityreference" lookupType="businessunit" />
+      <field displayname="Owning User"          name="owninguser"             type="entityreference" lookupType="systemuser" />
+      <field displayname="Created By"           name="createdby"              type="entityreference" lookupType="systemuser" />
+      <field displayname="Created On"           name="createdon"              type="datetime" />
+      <field displayname="Modified By"          name="modifiedby"             type="entityreference" lookupType="systemuser" />
+      <field displayname="Modified On"          name="modifiedon"             type="datetime" />
+    </fields>
+    <relationships/>
+  </entity>
+
 </entities>
 ```
 
 Save as `deployments/data/{mainSolution}/ConfigData.xml`.
 
-> **Tip**: For lookup fields, add `lookupType="{target-entity-name}"` to the field element. For required system fields (like `contactid`), mark as `primaryKey="true"`.
+> **Finding `etc` (entity type code)**: Open the CMT or check `Settings > Customizations > Developer Resources` in your Dataverse environment. Alternatively, run `pac data export` with the CMT-generated schema — `etc` is in the output schema.
 
-### Using the Configuration Migration Tool (for complex schemas)
+### Using the Configuration Migration Tool (recommended for large or complex schemas)
 
-If your data involves many entities or complex relationships, use the CMT to generate the schema:
+For schemas with many entities, option sets, or N:N relationships, use the CMT to auto-generate the schema rather than hand-crafting:
 
 ```powershell
 # Launch the Configuration Migration Tool
 pac tool cmt
 ```
 
-Export the schema and copy the resulting `ConfigData.xml` to `deployments/data/{mainSolution}/`.
+Copy the generated `ConfigData.xml` to `deployments/data/{mainSolution}/`.
 
 ---
 
