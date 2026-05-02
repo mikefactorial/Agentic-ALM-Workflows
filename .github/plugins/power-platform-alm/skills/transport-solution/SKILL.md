@@ -123,7 +123,7 @@ Inputs:
 - `source_environment_url`: dev environment URL (from `innerLoopEnvironments[]` in environment-config.json)
 - `target_environment_url`: integration environment URL — or the user-chosen alternative if integration is not configured (see Environment Mapping above)
 - `sync_target_solution`: `true`
-- `sync_commit_message`: `chore({mainSolution}): transport AB{####} to dev AB#{####}`
+- `sync_commit_message`: `chore({mainSolution}): transport {tag} to integration {trailer}`
 - `sync_branch_name`: `develop`
 
 ##### Via Local Script — NOT SUPPORTED
@@ -149,14 +149,14 @@ Run the automated code PR script from the repo root:
 
 ```powershell
 .platform/.github/workflows/scripts/Create-FeatureCodePR.ps1 `
-    -FeatureBranch "feat/AB{####}_{Description}" `
-    -WorkItemNumber "AB{####}" `
+    -FeatureBranch "feat/{tag}_{Description}" `
+    -WorkItemNumber "{tag}" `
     -Description "{short description}"
 ```
 
 The script uses a **branch-inversion strategy** to carry settings and config data forward without clobbering other features:
 
-1. Creates `chore/AB{####}_code` from `origin/{FeatureBranch}` — the feature branch is the starting point, so all code-first changes and deployment configuration added during development are already present
+1. Creates `chore/{tag}_code` from `origin/{FeatureBranch}` — the feature branch is the starting point, so all code-first changes and deployment configuration added during development are already present
 2. Strips the feature solution folder (`src/solutions/{featureSolution}/`) and its settings template via `git rm` — these never belong in `develop`
 3. Merges `origin/develop` (3-way merge) — any conflicts between this feature's settings/data and other features already merged to `develop` are surfaced explicitly rather than silently overwritten
 4. If no conflicts: pushes the branch and opens a PR
@@ -177,8 +177,8 @@ git commit --no-edit
 Then re-run with `-OpenPROnly` to push the resolved branch and open the PR without redoing the merge:
 ```powershell
 .platform/.github/workflows/scripts/Create-FeatureCodePR.ps1 `
-    -FeatureBranch "feat/AB{####}_{Description}" `
-    -WorkItemNumber "AB{####}" `
+    -FeatureBranch "feat/{tag}_{Description}" `
+    -WorkItemNumber "{tag}" `
     -Description "{short description}" `
     -OpenPROnly
 ```

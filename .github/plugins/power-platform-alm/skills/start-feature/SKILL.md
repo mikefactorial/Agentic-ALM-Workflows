@@ -1,6 +1,6 @@
 ---
 name: start-feature
-description: 'Start a new feature with a branch and feature solution. Use when: beginning a new work item, creating a feature solution in Dataverse, setting up a preferred solution, starting development on an AB#### work item, creating a feature branch, initializing a new capability or app.'
+description: 'Start a new feature with a branch and feature solution. Use when: beginning a new work item, creating a feature solution in Dataverse, setting up a preferred solution, starting development on an AB#### or GitHub issue work item, creating a feature branch, initializing a new capability or app.'
 ---
 
 # Start a Feature
@@ -9,7 +9,7 @@ Create a feature branch and initialise a corresponding feature solution in Datav
 
 ## When to Use
 
-- Starting work on a new work item (AB####)
+- Starting work on a new work item (Azure Boards `AB####`) or GitHub Issue (`#####`)
 - Beginning development of a new capability, table, form, flow, or app
 - Before creating any new Dataverse components so they are auto-tracked
 
@@ -26,14 +26,29 @@ Create a feature branch and initialise a corresponding feature solution in Datav
 
 Before proceeding, gather the following from the user. Ask only for what is missing:
 
-1. **Work item number** — Ask: *"What is the number of the Azure DevOps Feature, Story or Task for this feature?"* (This becomes the `AB####` prefix in the branch and solution name.)
+1. **Work item / issue number** — Ask: *"What is the work item or issue number for this feature? (e.g. `12345`, `AB#12345` for Azure DevOps, or `#12345` for a GitHub Issue)"*
 2. **Brief description** — A short slug used in the branch and solution name (e.g. `AddCustomerValidation`).
 3. **Branch type** — `feat` (default), `fix`, `chore`, `refactor`, `docs`, or `test`.
 4. **Solution area** — Read `solutionAreas[].name` from `environment-config.json` and present those as options.
 
+## Normalizing the Work Item / Issue Number
+
+Before using the number in any branch name, solution name, or commit message, normalize it based on the input and `trackingSystem` from `environment-config.json`:
+
+| Input | Detected system | Branch/solution tag | Commit trailer |
+|-------|----------------|---------------------|----------------|
+| `AB12345` or `AB#12345` | Azure Boards | `AB12345` | `AB#12345` |
+| `#12345` or `GH12345` | GitHub Issues | `GH12345` | `Closes #12345` |
+| `12345` (bare number) | Read `trackingSystem` from config (`azureBoards` or `github`) | `AB12345` or `GH12345` | `AB#12345` or `Closes #12345` |
+
+- **Branch/solution tag** — used in branch names (`feat/AB12345_Desc`) and solution names (`AB12345_Desc`). No `#` character (not valid in branch names or Dataverse solution names).
+- **Commit trailer** — appended to every commit message on the feature branch to link back to the work item or issue.
+
+Use the normalized values everywhere below. The variables `{tag}` and `{trailer}` in this skill refer to these derived values.
+
 ## Configuration
 
-> Before proceeding, read `deployments/settings/environment-config.json`. Use it to determine valid solution area names (`solutionAreas[].name`), dev environment slugs (`solutionAreas[].devEnv`), dev-test environment slugs (`environments[]` where slug ends in `-dev-test`), and environment URLs. Do not use hardcoded values.
+> Before proceeding, read `deployments/settings/environment-config.json`. Use it to determine valid solution area names (`solutionAreas[].name`), dev environment slugs (`solutionAreas[].devEnv`), dev-test environment slugs (`environments[]` where slug ends in `-dev-test`), environment URLs, and `trackingSystem`. Do not use hardcoded values.
 
 ## Prerequisites
 
@@ -46,21 +61,23 @@ Before proceeding, gather the following from the user. Ask only for what is miss
 
 ### 1. Create the Feature Branch
 
-Branch from `develop` using the naming convention `<type>/AB<WorkItemNumber>_BriefDescription`:
+Branch from `develop` using the naming convention `<type>/{tag}_BriefDescription` (where `{tag}` is the normalized branch/solution tag — see Normalization above):
 
 ```powershell
 git checkout develop
 git pull origin develop
-git checkout -b feat/AB{####}_{BriefDescription}
-# e.g. feat/AB12345_CreateInvoicingApp
-git push -u origin feat/AB{####}_{BriefDescription}
+git checkout -b feat/{tag}_{BriefDescription}
+# Azure Boards example: feat/AB12345_CreateInvoicingApp
+# GitHub Issue example: feat/GH12345_CreateInvoicingApp
+git push -u origin feat/{tag}_{BriefDescription}
 ```
 
 Types: `feat/`, `fix/`, `chore/`, `refactor/`, `docs/`, `test/`
 
-> **Work item linking**: All commits on a feature branch must include `AB#{WorkItemNumber}` at the end of the commit message. This links the commit to the Azure DevOps work item automatically.
-> Format: `<type>(<scope>): <description> AB#<WorkItemNumber>`
-> Example: `feat({solutionPrefix}_{solutionName}): add customer validation plugin AB#12345`
+> **Work item / issue linking**: All commits on a feature branch must end with the commit trailer (see Normalization above).
+> Format: `<type>(<scope>): <description> {trailer}`
+> Azure Boards example: `feat({solutionPrefix}_{solutionName}): add customer validation plugin AB#12345`
+> GitHub Issue example: `feat({solutionPrefix}_{solutionName}): add customer validation plugin Closes #12345`
 > (Derive `solutionPrefix` and `solutionName` from `solutionAreas[]` in `environment-config.json`)
 
 ### 2. Initialize the Feature Solution
@@ -75,7 +92,7 @@ Run `Initialize-FeatureSolution.ps1` from the repo root. The script will:
 ```powershell
 # From repo root — run from .platform/.github/workflows/scripts/
 .platform/.github/workflows/scripts/Initialize-FeatureSolution.ps1 `
-    -featureSolutionName "AB{####}_{BriefDescription}" `
+    -featureSolutionName "{tag}_{BriefDescription}" `
     -solutionArea "{solutionName}" `
     -environmentUrl "{devEnvUrl}"
 ```
@@ -87,7 +104,7 @@ Run `Initialize-FeatureSolution.ps1` from the repo root. The script will:
 
 The feature solution `.cdsproj` will be created at:
 ```
-src/solutions/{featureSolutionName}/{featureSolutionName}.cdsproj
+src/solutions/{tag}_{BriefDescription}/{tag}_{BriefDescription}.cdsproj
 ```
 
 ### 3. Set as Preferred Solution

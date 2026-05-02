@@ -259,7 +259,7 @@ Then commit the updated feature solution files to the feature branch:
 
 ```powershell
 git add src/solutions/{featureSolution}/
-git commit -m "chore({featureSolution}): register step for {PluginClassName} AB#{####}"
+git commit -m "chore({featureSolution}): register step for {PluginClassName} {trailer}"
 git push
 ```
 

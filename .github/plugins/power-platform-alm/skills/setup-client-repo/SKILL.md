@@ -80,6 +80,7 @@ Before proceeding, gather the following. Ask only for what is missing — do not
 | 7 | GitHub repository name | `repoName` | `AcmeCorp-Platform` |
 | 8 | What short lowercase name should identify your deployment environments? (e.g., `acme` creates environments named `acme-dev`, `acme-test`, `acme-prod`) | `envPrefix` | `acme` |
 | 9 | Release tag suffix — appended to GitHub Release tags like `v2026.05.01.1-{tag}` (default: same as solution name) | `packageTag` | `AcmePlatform` |
+| 10 | Which work item tracking system do you use? | `trackingSystem` | `azureBoards` or `github` |
 
 ### Environment URLs
 
@@ -126,6 +127,7 @@ After filling in, it should look like:
   "repoName": "AcmeCorp-Platform",
   "publisher": "AcmeCorp",
   "packageTag": "AcmePlatform",
+  "trackingSystem": "azureBoards",
   "packageProjectPath": "deployments/package/Deployer/PlatformPackage.csproj",
   "solutionAreas": [
     {

@@ -70,7 +70,7 @@ After `pac pcf push`, the control must be manually added to the feature solution
 
 | User says | Invoke |
 |-----------|--------|
-| "start a new feature", "create a feature branch", "begin work on AB####" | `start-feature` |
+| "start a new feature", "create a feature branch", "begin work on AB#### or GitHub issue" | `start-feature` |
 | "scaffold a plugin", "create a new plugin", "add server-side logic" | `scaffold-plugin` |
 | "scaffold a PCF control", "create a UI component", "build a custom control" | `scaffold-pcf-control` |
 | "register a plugin step", "push plugin to dev", "update plugin binary" | `register-plugin` |

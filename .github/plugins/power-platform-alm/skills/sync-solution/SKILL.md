@@ -61,7 +61,7 @@ Use the user-provided slug and resolve its URL from `innerLoopEnvironments[]` or
 1. **Actions** → **Sync Solution** → **Run workflow**
 2. Select environment: the resolved integration (or alternative) environment slug
 3. Enter solution name: main solution (e.g., `{solutionPrefix}_{solutionName}` — read from `solutionAreas[x].mainSolution`)
-4. Enter commit message: `chore: sync {solution} from {environment} AB#{WorkItemNumber}` (include `AB#` only when sync is part of a tracked work item; omit for routine post-transport syncs to `develop`)
+4. Enter commit message: `chore: sync {solution} from {environment} {trailer}` (include the trailer only when sync is part of a tracked work item; omit for routine post-transport syncs to `develop`)
 5. Enter branch: `develop`
 
 #### integration environment mapping:
