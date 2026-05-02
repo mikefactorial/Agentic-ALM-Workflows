@@ -213,26 +213,28 @@ No renaming of any files or folders is needed — the package project uses a fix
 
 Use the GitHub CLI to create each environment and set its variables. You need to do this for **all** environments — both inner loop (`innerLoopEnvironments[]`) and deployment (`environments[]`).
 
+Generate one block per environment using the values collected in the intake. Replace each placeholder with the actual slug, URL, and client ID for that environment:
+
 ```powershell
-# Repeat for EVERY environment in innerLoopEnvironments[] and environments[]:
-#   e.g. acme-dev, acme-integration, acme-dev-test, acme-test, acme-prod
-$org      = "<githubOrg>"
-$repo     = "<repoName>"
-$slug     = "<env-slug>"         # e.g. acme-dev
-$url      = "<dataverse-url>"    # e.g. https://org-dev12345.crm.dynamics.com/
-$clientId = "<client-id>"        # app registration client ID for this environment
+$org = "<githubOrg>"
+$repo = "<repoName>"
 
-gh api --method PUT /repos/$org/$repo/environments/$slug
-gh variable set DATAVERSE_URL --env $slug --repo "$org/$repo" --body $url
+# --- <env-slug-1> (e.g. acme-dev) ---
+gh api --method PUT /repos/$org/$repo/environments/<env-slug-1>
+gh variable set DATAVERSE_URL       --env <env-slug-1> --repo "$org/$repo" --body "<dataverse-url-1>"
+gh variable set DATAVERSE_CLIENT_ID --env <env-slug-1> --repo "$org/$repo" --body "<client-id-1>"
 
-# DATAVERSE_CLIENT_ID is optional here — skip if the app registration isn't ready yet.
-# It must be set before running any CI workflow against this environment.
-if ($clientId) {
-    gh variable set DATAVERSE_CLIENT_ID --env $slug --repo "$org/$repo" --body $clientId
-}
+# --- <env-slug-2> (e.g. acme-integration) ---
+gh api --method PUT /repos/$org/$repo/environments/<env-slug-2>
+gh variable set DATAVERSE_URL       --env <env-slug-2> --repo "$org/$repo" --body "<dataverse-url-2>"
+gh variable set DATAVERSE_CLIENT_ID --env <env-slug-2> --repo "$org/$repo" --body "<client-id-2>"
+
+# ... repeat for each remaining environment (acme-dev-test, acme-test, acme-prod, etc.)
 ```
 
 > **All environments need a GitHub Environment** — including dev and integration. Inner loop workflows (`sync-solution`, `transport-solution`, `build-deploy-solution`) authenticate against dev and integration using OIDC, which requires a matching GitHub Environment with `DATAVERSE_URL` and `DATAVERSE_CLIENT_ID` variables.
+
+> **Client ID not ready yet?** You can omit `DATAVERSE_CLIENT_ID` for any environment now and set it later — but the variable must be present before any CI workflow targets that environment.
 
 > **Approval gates** — after creating test and prod environments, go to **Settings → Environments → \<slug\>** in GitHub to add required reviewers. The `gh` CLI does not yet support configuring approval gates.
 
