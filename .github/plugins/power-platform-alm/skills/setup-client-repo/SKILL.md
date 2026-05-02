@@ -283,21 +283,29 @@ Test the full auth chain using the `test-oidc-auth.yml` workflow after completin
 
 ---
 
-### 6. Set Up Repository-Level Variables
+### 6. Set Up Repository-Level Variables and Secrets
 
-No secrets are stored — authentication uses OIDC federated credentials. Set the three repository-level variables via `gh`:
+Run the following to set all required repository-level variables and secrets:
 
 ```powershell
-# AZURE_TENANT_ID is the same for all environments
-gh variable set AZURE_TENANT_ID --repo "<org>/<repo>" --body "<tenantId>"
+$org  = "<githubOrg>"
+$repo = "<repoName>"
 
-# Default environment targeted by automatic deploys on push to main
+# Azure tenant ID — shared across all environments
+gh variable set AZURE_TENANT_ID --repo "$org/$repo" --body "<tenantId>"
+
+# Default environment(s) targeted by automatic deploys on push to main
 # Derive from environments[]: use the test-tier slug (e.g. acme-test)
-gh variable set DEPLOYMENT_ENVIRONMENTS --repo "<org>/<repo>" --body "<test-slug>"
+gh variable set DEPLOYMENT_ENVIRONMENTS --repo "$org/$repo" --body "<test-slug>"
 
 # Integration environment used for PR validation builds
 # Derive from solutionAreas[].integrationEnv in environment-config.json
-gh variable set PR_VALIDATION_INTEGRATION_ENV --repo "<org>/<repo>" --body "<integration-slug>"
+gh variable set PR_VALIDATION_INTEGRATION_ENV --repo "$org/$repo" --body "<integration-slug>"
+
+# Pipeline hook variables and secrets — empty JSON objects by default.
+# Hooks read from these at runtime; populate later if you add custom hooks.
+gh variable set HOOK_VARIABLES --repo "$org/$repo" --body "{}"
+gh secret  set HOOK_SECRETS   --repo "$org/$repo" --body "{}"
 ```
 
 ---
