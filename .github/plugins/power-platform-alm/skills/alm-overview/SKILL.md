@@ -13,6 +13,7 @@ This skill routes requests to the correct specialist skill. Read this first, the
 |-------|---------|
 | `alm-overview` | Routing and cross-cutting rules (this skill) |
 | `setup-client-repo` | First-time repo setup from template; filling `environment-config.json`; GitHub environments, secrets, branch protection |
+| `setup-oidc` | Configure OIDC federated credentials for one or more environments; create service principals via `pac admin create-service-principal`; run `Setup-GitHubFederatedCredentials.ps1`; generate admin hand-off instructions |
 | `start-feature` | Create feature branch and feature solution; set preferred solution; begin inner-loop development |
 | `build-solution` | Build solution ZIPs locally; validate code-first changes compile; pre-build plugins or PCF controls |
 | `deploy-solution` | Deploy unmanaged to dev; deploy managed to dev-test with settings and data; full inner-loop deployment sequence |
@@ -83,3 +84,4 @@ After `pac pcf push`, the control must be manually added to the feature solution
 | "cut a release", "merge develop to main", "create release package" | `create-release` |
 | "deploy to test", "deploy to prod", "run outer-loop deployment" | `deploy-package` |
 | "set up the repo", "configure for new client", "fill in environment-config" | `setup-client-repo` |
+| "set up OIDC", "federated credentials", "service principal", "OIDC auth is failing", "generate admin instructions for Azure" | `setup-oidc` |
