@@ -82,7 +82,26 @@ Scripts live in `.github/workflows/scripts/` and are used both by callable workf
 | `Run-SolutionChecker.ps1` | Run the Power Platform solution checker |
 | `Invoke-WebResourceLinting.ps1` | Lint web resources |
 
-## Agent Skills (Plugin)
+### Pipeline Hooks
+
+Every major workflow stage exposes **pre/post hooks** — PowerShell scripts in the caller repo's `.github/workflows/scripts/hooks/` folder that run without modifying core pipeline logic. This is the primary extensibility point for project-specific steps: custom notifications, backup snapshots, external system integrations, additional validation, etc.
+
+| Stage | Hook files |
+|-------|-----------|
+| Solution export | `Pre-Export-Hook.ps1`, `Post-Export-Hook.ps1` |
+| Solution unpack | `Pre-Unpack-Hook.ps1`, `Post-Unpack-Hook.ps1` |
+| Git commit | `Pre-Commit-Hook.ps1`, `Post-Commit-Hook.ps1` |
+| Solution build | `Pre-Build-Hook.ps1`, `Post-Build-Hook.ps1` |
+| Solution import/deploy | `Pre-Import-Hook.ps1`, `Post-Import-Hook.ps1`, `Pre-Deploy-Hook.ps1`, `Post-Deploy-Hook.ps1` |
+
+Hook scripts receive a context object with relevant parameters for their stage (environment URL, solution name, commit message, etc.). They read shared configuration from two repo-level variables:
+
+- `HOOK_VARIABLES` — non-secret JSON object (e.g. webhook URLs, environment identifiers)
+- `HOOK_SECRETS` — secret JSON object (e.g. API keys, subscription keys)
+
+Hooks fail silently by default (`ContinueOnError = $true`) — a failing hook does not stop the pipeline unless it explicitly throws. See `.github/workflows/scripts/hooks/README.md` for the full hook contract and `EXAMPLES.md` for common patterns.
+
+
 
 ALM tasks are automated through the `power-platform-alm` Copilot plugin. Skills cover the full inner and outer loop — describing a task in plain English is enough; the `alm-overview` router picks the right specialist automatically.
 
@@ -149,4 +168,3 @@ To initialize or update `.platform` in a caller repo:
 ## Versioning
 
 Callers reference `@main` for latest, or a specific release tag (e.g. `@v2026.04.17.1`) for pinned stability.
-
