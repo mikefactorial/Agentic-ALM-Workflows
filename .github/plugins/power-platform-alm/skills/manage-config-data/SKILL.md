@@ -92,7 +92,9 @@ Export the schema and copy the resulting `ConfigData.xml` to `deployments/data/{
 
 ---
 
-## Step 3 — Export Data from Dev
+## Step 3 — Export Data from Dev (or Hand-Craft data.xml)
+
+### Option A — Export from an existing environment (recommended)
 
 Run `pac data export` against the dev environment to produce `data.xml`:
 
@@ -116,6 +118,68 @@ Both produce:
 - `data_schema.xml` — the schema as read at export time (used by `pac data import`)
 
 Commit both files to the feature branch.
+
+### Option B — Hand-craft data.xml for seed/test data
+
+When there are no records to export yet (e.g. seeding a fresh environment with reference data), create `data.xml` by hand. The format must exactly match the structure `pac data import` expects:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<entities xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          timestamp="2026-01-01T00:00:00.0000000Z">
+  <entity name="{prefix}_{entityname}" displayname="{Display Name}">
+    <records>
+      <record id="{fixed-guid-for-this-record}">
+        <field name="{prefix}_{entityname}id" value="{same-fixed-guid}" />
+        <field name="{prefix}_name"           value="Record Name" />
+        <field name="statecode"               value="0" />
+        <field name="statuscode"              value="1" />
+      </record>
+    </records>
+  </entity>
+</entities>
+```
+
+**Rules for hand-crafted data.xml:**
+
+- **Always include the primary key field** (e.g. `{prefix}_{entityname}id`) with a fixed, deterministic GUID. Use a consistent UUID per record — it is used for upsert matching on re-import.
+- **Always include `statecode` and `statuscode`** — `0`/`1` for active records.
+- **Lookup fields** require `lookupentity` and optionally `lookupentityname` attributes:
+  ```xml
+  <field name="ownerid" value="{user-guid}" lookupentity="systemuser" lookupentityname="Display Name" />
+  ```
+- **Do not include** audit fields (`createdby`, `createdon`, `modifiedby`, `modifiedon`) in hand-crafted files — Dataverse sets these automatically on import and will ignore or error on them.
+- **Date fields** use ISO 8601 UTC format: `2026-01-01T00:00:00.0000000Z`.
+- **Boolean fields** use string values `"True"` / `"False"` (capital T/F).
+- **OptionSet / choice fields** use the integer value of the option as a string: `value="100000000"`.
+
+**Real-world example** (custom `exa_country` entity with lookup and boolean fields):
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<entities xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          timestamp="2026-01-01T00:00:00.0000000Z">
+  <entity name="exa_country" displayname="Country">
+    <records>
+      <record id="11111111-1111-1111-1111-000000000001">
+        <field name="exa_countryid"          value="11111111-1111-1111-1111-000000000001" />
+        <field name="exa_name"               value="Afghanistan" />
+        <field name="exa_abbreviation"       value="AFG" />
+        <field name="exa_postalcoderequired" value="False" />
+        <field name="exa_staterequired"      value="False" />
+        <field name="statecode"              value="0" />
+        <field name="statuscode"             value="1" />
+      </record>
+    </records>
+  </entity>
+</entities>
+```
+
+> **Do not copy `createdby`, `createdon`, `modifiedby`, `modifiedon`, `ownerid`, `owningbusinessunit`, `owninguser` from exported files into hand-crafted ones** — these system/audit fields are environment-specific and will cause import failures or unexpected ownership assignment.
+
+After hand-crafting `data.xml`, also create a matching `data_schema.xml` (same structure as `ConfigData.xml` but named `data_schema.xml`) — `pac data import` reads the schema from this file. The simplest approach is to copy your `ConfigData.xml` to `data_schema.xml` in the same folder.
 
 ---
 
