@@ -156,7 +156,7 @@ If **yes**:
   ```
   > **Important**: Always pass the primary solution name (i.e. `solutionAreas[x].mainSolution`) to `-SolutionName`, not the feature solution name.
   > Feature solutions have no config data folder.
-- If `ConfigData.xml` does not exist, tell the user they need to create a ConfigData schema first using the Configuration Migration Tool, then re-run.
+- If `ConfigData.xml` does not exist yet, invoke the `manage-config-data` skill to create the schema and initial data before continuing here.
 
 ### Step 6 — Deploy Managed to dev-test
 

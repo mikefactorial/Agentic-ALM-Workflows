@@ -17,6 +17,7 @@ This skill routes requests to the correct specialist skill. Read this first, the
 | `build-solution` | Build solution ZIPs locally; validate code-first changes compile; pre-build plugins or PCF controls |
 | `deploy-solution` | Deploy unmanaged to dev; deploy managed to dev-test with settings and data; full inner-loop deployment sequence |
 | `sync-solution` | Export solution from Dataverse and commit to source control; refresh deployment settings templates |
+| `manage-config-data` | Create config data schema; export records from dev to source control; import data into any environment via `pac data` |
 | `register-plugin` | Push plugin binary to dev; register or update message processing steps; register custom APIs |
 | `scaffold-plugin` | Create a new plugin project; wire into solution; register the first step |
 | `scaffold-pcf-control` | Create a new PCF control; wire into solution; push to dev |
@@ -77,6 +78,7 @@ After `pac pcf push`, the control must be manually added to the feature solution
 | "build the solution", "compile", "validate the build" | `build-solution` |
 | "deploy to dev", "deploy to dev-test", "import to test environment" | `deploy-solution` |
 | "sync the solution", "export from Dataverse", "capture changes from environment" | `sync-solution` |
+| "config data", "create schema", "export records", "import data", "seed data", "pac data" | `manage-config-data` |
 | "transport to dev", "promote feature", "complete inner loop", "move to develop" | `transport-solution` |
 | "cut a release", "merge develop to main", "create release package" | `create-release` |
 | "deploy to test", "deploy to prod", "run outer-loop deployment" | `deploy-package` |
