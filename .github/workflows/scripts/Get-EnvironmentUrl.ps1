@@ -55,4 +55,16 @@ if (-not $match) {
     exit 1
 }
 
+if ($match.url -match '^\{\{[A-Z_]+\}\}$') {
+    Write-Error @"
+Environment '$Slug' is defined in environment-config.json but its URL has not been configured yet.
+Current value: $($match.url)
+
+This environment is optional and was not set up during initial configuration.
+To enable it, update the 'url' field for slug '$Slug' in deployments/settings/environment-config.json
+and (if deploying via CI) create the matching GitHub Environment with DATAVERSE_URL and DATAVERSE_CLIENT_ID variables.
+"@
+    exit 1
+}
+
 $match.url

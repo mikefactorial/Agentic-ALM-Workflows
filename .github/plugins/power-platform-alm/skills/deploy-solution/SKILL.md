@@ -28,6 +28,10 @@ Read from `environment-config.json`:
 - **dev** (unmanaged): `solutionAreas[x].devEnv` slug → `innerLoopEnvironments[].url`
 - **dev-test** (managed): `environments[]` where slug ends in `-dev-test` → `.url`
 
+> **Optional dev-test environment**: Before running Scenario B, check whether any entry in `environments[]` has a slug ending in `-dev-test` with a non-placeholder URL. If all matching entries have `{{PLACEHOLDER}}` URLs (or none exist), this repo was configured without a dev-test environment. Ask the user:
+> *"Your repo doesn't have a dev-test environment configured. Which environment should be used for managed deployment testing? (e.g. your test environment slug)"*
+> Resolve the URL from `environments[]` for the user-provided slug. If that URL is also a placeholder, fail with a message explaining the environment needs to be configured in `environment-config.json` first.
+
 ---
 
 ## Scenario A: Deploy Unmanaged to dev

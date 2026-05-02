@@ -29,6 +29,31 @@ If it returns `False` or the directory is empty, the submodule is not initialize
 
 Do not proceed until `.platform` is populated — all subsequent skills depend on those scripts.
 
+### Check Required Tools
+
+Run this to verify all required CLIs are installed:
+
+```powershell
+$missing = @()
+if (-not (Get-Command pac    -ErrorAction SilentlyContinue)) { $missing += 'pac (Power Platform CLI) — https://aka.ms/PowerAppsCLI' }
+if (-not (Get-Command gh     -ErrorAction SilentlyContinue)) { $missing += 'gh (GitHub CLI) — https://cli.github.com' }
+if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { $missing += 'dotnet (.NET SDK) — https://dot.net' }
+if ($missing) {
+    Write-Warning "Missing required tools — install before continuing:"
+    $missing | ForEach-Object { Write-Host "  $_" }
+} else {
+    Write-Host "All required tools found." -ForegroundColor Green
+}
+```
+
+Do not proceed until all three tools are available. Also verify `gh` is authenticated:
+
+```powershell
+gh auth status
+```
+
+If not authenticated, run `gh auth login` and follow the prompts.
+
 ## Skill boundaries
 
 | Need | Use instead |
@@ -60,15 +85,28 @@ Before proceeding, gather the following. Ask only for what is missing — do not
 
 Walk through these in order. Dev, Test, and Prod are required; Integration and Dev Test are optional.
 
-1. **Dev** *(required)* — "What is the URL of your dev environment?"
-2. **Integration** *(optional)* — "Do you have a shared integration environment where features are assembled and staged before release? *(Skip this if developers work directly from dev to test.)*" → if yes: "What is the URL?"
-3. **Dev Test** *(optional)* — "Do you have a dev-test environment for validating individual features before they reach integration or UAT?" → if yes: "What is the URL?"
-4. **Test / UAT** *(required)* — "What is the URL of your test or UAT environment?"
-5. **Production** *(required)* — "What is the URL of your production environment?"
+1. **Dev** *(required)* — "What is the URL of your dev environment? (e.g., `https://org-dev12345.crm.dynamics.com/`)"
+2. **Integration** *(optional)* — "Do you have a shared integration environment where features are assembled and staged before release? *(Skip this if developers work directly from dev to test.)*" → if yes: "What is the URL? (e.g., `https://org-int67890.crm.dynamics.com/`)"
+3. **Dev Test** *(optional)* — "Do you have a dev-test environment for validating individual features before they reach integration or UAT?" → if yes: "What is the URL? (e.g., `https://org-dvt11111.crm.dynamics.com/`)"
+4. **Test / UAT** *(required)* — "What is the URL of your test or UAT environment? (e.g., `https://org-tst22222.crm.dynamics.com/`)"
+5. **Production** *(required)* — "What is the URL of your production environment? (e.g., `https://org-prd33333.crm.dynamics.com/`)"
 
 If an optional environment is declined:
 - **Integration** skipped: remove it from `innerLoopEnvironments[]` and set `solutionAreas[].integrationEnv` to the same slug as `devEnv`
 - **Dev Test** skipped: remove it from `environments[]` and from `packageGroups[].environments`
+
+> **Minimum viable topology**: Dev + Test + Production is the smallest supported configuration. Any combination of optional environments (Integration, Dev Test) can be omitted.
+
+> **Adding environments later**: If the user wants to enable a skipped environment after initial setup, they add its entry back to `environments[]` (with the real URL) and to any relevant `packageGroups[].environments`. Any attempt to use an environment whose URL is still a `{{PLACEHOLDER}}` value will fail with a clear error message pointing back to `environment-config.json`.
+
+### GitHub & Azure Credentials
+
+Gather these before running the GitHub environment setup commands in Step 4.
+
+| # | What to ask | Key | Example |
+|---|-------------|-----|---------|
+| 10 | Azure AD tenant ID — the same for all environments | `azureTenantId` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+| 11 | *(Optional — can be added to GitHub later)* For each deployment environment (dev-test, test, prod), what is the app registration (service principal) client ID? Ask per environment. If the user doesn't have these yet, skip and note they must be set in GitHub before deployments will work. | `clientId` per env | `yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy` |
 
 ---
 
@@ -173,46 +211,91 @@ No renaming of any files or folders is needed — the package project uses a fix
 
 ### 4. Set Up GitHub Environments
 
-For each slug in `environments[]` in `environment-config.json`, create a GitHub Environment:
+Use the GitHub CLI to create each environment and set its variables. Run the following for each slug in `environments[]` — substituting the actual slug, URL, and client ID:
 
-1. Go to **Settings → Environments → New environment** in the repository
-2. Name it exactly as the slug (e.g. `acme-test`)
-3. Add these variables:
+```powershell
+# Repeat for each deployment environment (e.g. acme-dev-test, acme-test, acme-prod)
+$org      = "<githubOrg>"
+$repo     = "<repoName>"
+$slug     = "<env-slug>"         # e.g. acme-test
+$url      = "<dataverse-url>"    # e.g. https://org-tst22222.crm.dynamics.com/
+$clientId = "<client-id>"        # app registration client ID for this environment
 
-| Variable | Value |
-|----------|-------|
-| `DATAVERSE_URL` | Full Dataverse environment URL (with trailing `/`) |
-| `DATAVERSE_CLIENT_ID` | App registration client ID for this environment |
+gh api --method PUT /repos/$org/$repo/environments/$slug
+gh variable set DATAVERSE_URL --env $slug --repo "$org/$repo" --body $url
 
-4. Add `AZURE_TENANT_ID` as a **repository-level** variable (same for all environments)
-5. Configure approval gates on test and prod tier environments
+# DATAVERSE_CLIENT_ID is optional here — skip if the app registration isn't ready yet.
+# It must be set before running deployments to this environment.
+if ($clientId) {
+    gh variable set DATAVERSE_CLIENT_ID --env $slug --repo "$org/$repo" --body $clientId
+}
+```
+
+> **Approval gates** — after creating test and prod environments, go to **Settings → Environments → \<slug\>** in GitHub to add required reviewers. The `gh` CLI does not yet support configuring approval gates.
 
 ---
 
 ### 5. Configure OIDC Federated Credentials
 
-For each environment's app registration, add a federated credential:
+This step requires an Azure AD app registration (service principal) per deployment environment, and permission to add federated credentials to it. There are two common paths:
+
+#### Option A — Power Platform Admin creates the service principal
+
+A Power Platform Admin can create an app registration and grant it the Dataverse service role in one command:
+
+```powershell
+# Run as a Power Platform Admin
+pac admin create-service-principal --environment <dataverse-env-url>
+```
+
+This outputs the **Application (Client) ID** and **Tenant ID** to use in Steps 4 and 6. Repeat for each deployment environment.
+
+> If the user is not a Power Platform Admin, share this command with whoever manages your Power Platform tenant.
+
+#### Option B — Azure AD Admin creates the app registration manually
+
+If the service principal already exists or is managed by an Azure AD admin, they need to add a federated credential with:
 
 ```
 Audience: api://AzureADTokenExchange
 Subject:  repo:<githubOrg>/<repoName>:environment:<env-slug>
 ```
 
-Test using `test-oidc-auth.yml` workflow after completing this step.
+#### Automate federated credential creation (requires Azure CLI + app registration permissions)
+
+Once the app registration exists, use the helper script from `.platform` to add federated credentials for all environments in one pass:
+
+```powershell
+# Requires: az login, and permission to modify the app registration
+.platform/.github/workflows/scripts/Setup-GitHubFederatedCredentials.ps1 `
+    -AppRegistrationId "<client-id>" `
+    -GitHubOrg "<githubOrg>" `
+    -RepositoryName "<repoName>" `
+    -Environments @("<env-slug-1>", "<env-slug-2>", "<env-slug-3>")
+```
+
+Run once per app registration (i.e., once per environment if each has its own, or once if they share one).
+
+Test the full auth chain using the `test-oidc-auth.yml` workflow after completing this step.
 
 ---
 
-### 6. Set Up Repository Secrets and Variables
+### 6. Set Up Repository-Level Variables
 
-**Repository secrets** — none required. Authentication uses OIDC federated credentials (no stored secrets).
+No secrets are stored — authentication uses OIDC federated credentials. Set the three repository-level variables via `gh`:
 
-**Repository variables** (Settings → Secrets and variables → Actions → Variables):
+```powershell
+# AZURE_TENANT_ID is the same for all environments
+gh variable set AZURE_TENANT_ID --repo "<org>/<repo>" --body "<tenantId>"
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `AZURE_TENANT_ID` | Azure AD tenant ID | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
-| `DEPLOYMENT_ENVIRONMENTS` | Default deploy targets for `workflow_run` trigger | `acme-test` |
-| `PR_VALIDATION_INTEGRATION_ENV` | Integration env slug for PR validation builds | `acme-integration` |
+# Default environment targeted by automatic deploys on push to main
+# Derive from environments[]: use the test-tier slug (e.g. acme-test)
+gh variable set DEPLOYMENT_ENVIRONMENTS --repo "<org>/<repo>" --body "<test-slug>"
+
+# Integration environment used for PR validation builds
+# Derive from solutionAreas[].integrationEnv in environment-config.json
+gh variable set PR_VALIDATION_INTEGRATION_ENV --repo "<org>/<repo>" --body "<integration-slug>"
+```
 
 ---
 
@@ -234,3 +317,11 @@ In GitHub → Settings → Branches, add rules:
 
 - **`main`**: Require PR, restrict to `develop` or `hotfix/*` source (enforced by `check-source-branch.yml`)
 - **`develop`**: Require PR review; no force push; no direct push for non-admins
+
+---
+
+## Next Steps
+
+Once setup is complete, you're ready to start development. Use the `start-feature` skill to kick off your first feature — it handles authenticating to your dev environment, creating the feature solution in Dataverse, branching, and wiring everything together:
+
+> "Start a new feature" — or describe the feature you want to build and the agent will use `start-feature` automatically.

@@ -58,6 +58,10 @@ feature branch ─────────────────────�
 
 Read from `environment-config.json`: for each solution area, `solutionAreas[x].devEnv` is the source slug and `solutionAreas[x].integrationEnv` is the target slug. Resolve both URLs from `innerLoopEnvironments[].url`.
 
+> **Optional integration environment**: Before running transport, check whether `solutionAreas[x].integrationEnv` resolves to a real URL in `innerLoopEnvironments[]`. If the URL value is a `{{PLACEHOLDER}}` or the slug maps to nothing, this repo was configured without a dedicated integration environment. In that case, ask the user:
+> *"Your repo doesn't have an integration environment configured. Which environment should be used as the transport target? (e.g. your test or UAT environment slug)"*
+> Use the user-provided slug and resolve its URL from `environments[]` instead. If the user-provided URL is also a placeholder, fail with a clear message explaining the environment is not yet configured in `environment-config.json`.
+
 ---
 
 ## Definition of Done
@@ -117,7 +121,7 @@ Inputs:
 - `source_solution_name`: Feature solution name (e.g., `AB9999_HelloWorldPCF`)
 - `target_solution_name`: Main solution (e.g., `{solutionPrefix}_{solutionName}` from environment-config.json)
 - `source_environment_url`: dev environment URL (from `innerLoopEnvironments[]` in environment-config.json)
-- `target_environment_url`: integration environment URL (from `innerLoopEnvironments[]` in environment-config.json)
+- `target_environment_url`: integration environment URL — or the user-chosen alternative if integration is not configured (see Environment Mapping above)
 - `sync_target_solution`: `true`
 - `sync_commit_message`: `chore({mainSolution}): transport AB{####} to dev AB#{####}`
 - `sync_branch_name`: `develop`

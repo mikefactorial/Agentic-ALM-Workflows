@@ -167,8 +167,22 @@ jobs:
           foreach ($group in $config.packageGroups) {
             $groupEnvs = @($group.environments)
             if ($groupEnvs.Count -eq 0) { continue }
+
+            # Build a URL lookup from all environments[] entries for placeholder detection
+            $envUrlLookup = @{}
+            foreach ($e in $config.environments) { $envUrlLookup[$e.slug] = $e.url }
+
             foreach ($solution in $group.solutions) {
               foreach ($env in $groupEnvs) {
+                # Skip environments whose slug or URL is still a placeholder
+                if ($env -match '\{\{[A-Z_]+\}\}') {
+                  Write-Warning "Skipping environment '$env' in package group '$($group.name)' — slug is an unconfigured placeholder. Update environment-config.json to enable."
+                  $skipped++; continue
+                }
+                if ($envUrlLookup.ContainsKey($env) -and $envUrlLookup[$env] -match '\{\{[A-Z_]+\}\}') {
+                  Write-Warning "Skipping environment '$env' in package group '$($group.name)' — URL not yet configured (placeholder value). Update environment-config.json to enable."
+                  $skipped++; continue
+                }
                 $key = "${solution}:${env}"
                 if ($seen.Add($key)) { $pairs.Add([PSCustomObject]@{ solution = $solution; environment = $env }) }
               }

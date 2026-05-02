@@ -41,6 +41,10 @@ if (-not (Test-Path $envConfigPath)) {
 $platformConfig = Get-Content $envConfigPath -Raw | ConvertFrom-Json
 $envUrlMap = [ordered]@{}
 foreach ($env in $platformConfig.environments) {
+    if ($env.url -match '^\{\{[A-Z_]+\}\}$') {
+        Write-Warning "Skipping environment '$($env.slug)' — URL not yet configured (placeholder value: $($env.url)). Update deployments/settings/environment-config.json to enable this environment."
+        continue
+    }
     $envUrlMap[$env.slug] = $env.url
 }
 

@@ -36,7 +36,7 @@ Sync your feature solution FROM dev TO your feature branch during active develop
 1. **Actions** → **Sync, Build and Deploy Solution** → **Run workflow**
 2. Select source environment: the dev environment slug for your solution area (read `solutionAreas[x].devEnv` from `environment-config.json`)
 3. Enter solution name: your feature solution (e.g., `AB12345_CreateInvoicingApp`)
-4. Enter target environments: the dev-test environment slug for your solution area (read from `environments[]` in `environment-config.json`, slug ending in `-dev-test`)
+4. Enter target environments: the dev-test environment slug for your solution area (read from `environments[]` in `environment-config.json`, slug ending in `-dev-test`). If no dev-test entry exists with a real URL, ask the user which environment to deploy to instead.
 5. Enter branch: your feature branch (e.g., `feat/AB12345_CreateInvoicingApp`)
 
 This syncs the feature solution metadata, commits to your feature branch, then builds and deploys to dev-test in one step.
@@ -50,19 +50,23 @@ Alternatively, sync only (without build/deploy):
     -skipGitCommit
 ```
 
-### Context B: Post-Transport (dev → develop branch)
+### Context B: Post-Transport (integration → develop branch)
 
-After a feature has been transported to dev, sync the main solution FROM dev TO the `develop` branch:
+After a feature has been transported, sync the main solution FROM the integration (or equivalent) environment TO the `develop` branch.
+
+**First, determine the source environment:** Read `solutionAreas[x].integrationEnv` from `environment-config.json` and look up its URL in `innerLoopEnvironments[]`. If the URL is a `{{PLACEHOLDER}}`, this repo has no dedicated integration environment — ask the user:
+> *"Your repo doesn't have an integration environment configured. Which environment should be synced from after transport? (e.g. your dev or test environment slug)"*
+Use the user-provided slug and resolve its URL from `innerLoopEnvironments[]` or `environments[]`.
 
 1. **Actions** → **Sync Solution** → **Run workflow**
-2. Select environment: the dev environment slug for your solution area (read `solutionAreas[x].integrationEnv` from `environment-config.json`)
+2. Select environment: the resolved integration (or alternative) environment slug
 3. Enter solution name: main solution (e.g., `{solutionPrefix}_{solutionName}` — read from `solutionAreas[x].mainSolution`)
 4. Enter commit message: `chore: sync {solution} from {environment} AB#{WorkItemNumber}` (include `AB#` only when sync is part of a tracked work item; omit for routine post-transport syncs to `develop`)
 5. Enter branch: `develop`
 
 #### integration environment mapping:
 
-Read from `environment-config.json`: for each solution area, `solutionAreas[x].integrationEnv` is the slug → look up `innerLoopEnvironments[].url` where slug matches.
+Read from `environment-config.json`: for each solution area, `solutionAreas[x].integrationEnv` is the slug → look up `innerLoopEnvironments[].url` where slug matches. If the URL is a placeholder, use the user-chosen alternative.
 
 #### dev environment mapping:
 
