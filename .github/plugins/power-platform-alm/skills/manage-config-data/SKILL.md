@@ -291,4 +291,4 @@ Or open the target environment in make.powerapps.com and check the relevant tabl
 
 - Commit `data.xml` and `data_schema.xml` to the feature branch
 - The Package Deployer will pick up the data automatically on the next outer-loop deployment (if the solution is in `packageGroups[].dataSolution`)
-- If the data needs to reach dev-test before transport, trigger `build-deploy-solution.yml` with `data_solution_name` set to `{mainSolution}`
+- If the data needs to reach dev-test before stage, trigger `build-deploy-solution.yml` with `data_solution_name` set to `{mainSolution}`

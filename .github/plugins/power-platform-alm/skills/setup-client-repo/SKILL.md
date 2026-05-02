@@ -76,7 +76,7 @@ Before proceeding, gather the following. Ask only for what is missing — do not
 | 3 | Company or organization name (PascalCase, no spaces) — becomes the Dataverse publisher name and prefixes your plugin `.sln` file | `publisher` | `AcmeCorp` |
 | 4 | What is the name of your main Power Platform solution? (PascalCase, no spaces — more solutions can be added later) | `solutionName` | `AcmePlatform` |
 | 5 | Dataverse publisher prefix (lowercase, 3–5 chars) — the short prefix Dataverse prepends to all schema names for this publisher | `solutionPrefix` | `acm` |
-| 6 | GitHub organization name | `githubOrg` | `AcmeCorp` |
+| 6 | GitHub organization or personal account name (use the exact org name or your GitHub username for personal accounts) | `githubOrg` | `AcmeCorp` or `johndoe` |
 | 7 | GitHub repository name | `repoName` | `AcmeCorp-Platform` |
 | 8 | What short lowercase name should identify your deployment environments? (e.g., `acme` creates environments named `acme-dev`, `acme-test`, `acme-prod`) | `envPrefix` | `acme` |
 | 9 | Release tag suffix — appended to GitHub Release tags like `v2026.05.01.1-{tag}` (default: same as solution name) | `packageTag` | `AcmePlatform` |
@@ -234,7 +234,7 @@ gh variable set DATAVERSE_CLIENT_ID --env <env-slug-2> --repo "$org/$repo" --bod
 # ... repeat for each remaining environment (acme-dev-test, acme-test, acme-prod, etc.)
 ```
 
-> **All environments need a GitHub Environment** — including dev and integration. Inner loop workflows (`sync-solution`, `transport-solution`, `build-deploy-solution`) authenticate against dev and integration using OIDC, which requires a matching GitHub Environment with `DATAVERSE_URL` and `DATAVERSE_CLIENT_ID` variables.
+> **All environments need a GitHub Environment** — including dev and integration. Inner loop workflows (`sync-solution`, `Stage-Solution`, `build-deploy-solution`) authenticate against dev and integration using OIDC, which requires a matching GitHub Environment with `DATAVERSE_URL` and `DATAVERSE_CLIENT_ID` variables.
 
 > **Client ID not ready yet?** You can omit `DATAVERSE_CLIENT_ID` for any environment now and set it later — but the variable must be present before any CI workflow targets that environment.
 

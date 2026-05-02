@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Transport a solution from a source environment to a target environment
+    stage a solution from a source environment to a target environment
     
 .DESCRIPTION
     Exports a solution as unmanaged from a source environment, imports it into a target environment,
@@ -37,8 +37,8 @@
     The Azure AD application (client) ID (for federated auth). Leave blank for interactive authentication.
     
 .EXAMPLE
-    # Local testing - Full transport with interactive auth
-    .\Transport-Solution.ps1 `
+    # Local testing - Full stage with interactive auth
+    .\Stage-Solution.ps1 `
         -Phase All `
         -sourceSolutionName "MyFeatureSolution" `
         -targetSolutionName "DevelopmentIntegrationSolution" `
@@ -47,7 +47,7 @@
 
 .EXAMPLE
     # GitHub Actions Job 1 - Export only (federated auth)
-    .\Transport-Solution.ps1 `
+    .\Stage-Solution.ps1 `
         -Phase Export `
         -sourceSolutionName "MyFeatureSolution" `
         -sourceEnvironmentUrl ${{ vars.DATAVERSE_URL }} `
@@ -56,7 +56,7 @@
         
 .EXAMPLE
     # GitHub Actions Job 2 - Import and copy (federated auth)
-    .\Transport-Solution.ps1 `
+    .\Stage-Solution.ps1 `
         -Phase Import `
         -sourceSolutionName "MySourceSolution" `
         -targetSolutionName "MyTargetSolution" `
@@ -150,7 +150,7 @@ if ($Phase -eq "Export" -or $Phase -eq "All") {
 }
 
 Write-Host "=========================================="
-Write-Host "Power Platform Solution Transport - $Phase Phase"
+Write-Host "Power Platform Solution stage - $Phase Phase"
 Write-Host "=========================================="
 Write-Host "Source Solution: $sourceSolutionName"
 if ($Phase -ne "Export") {
@@ -329,7 +329,7 @@ try {
 catch {
     Write-Host ""
     Write-Host "==========================================" -ForegroundColor Red
-    Write-Host "✗ Solution Transport Failed" -ForegroundColor Red
+    Write-Host "✗ Solution stage Failed" -ForegroundColor Red
     Write-Host "==========================================" -ForegroundColor Red
     Write-Host ""
     Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red

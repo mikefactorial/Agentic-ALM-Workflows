@@ -1,6 +1,6 @@
 {
   "name": "power-platform-alm",
-  "description": "Agent skills for Power Platform ALM — start features, scaffold plugins and PCF controls, sync solutions, deploy, transport, and release using the Agentic-ALM-Template.",
+  "description": "Agent skills for Power Platform ALM — start features, scaffold plugins and PCF controls, sync solutions, deploy, stage, and release using the Agentic-ALM-Template.",
   "version": "1.0.0",
   "author": {
     "name": "mikefactorial",

@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    After feature transport, creates a clean code PR on develop containing only
+    After feature stage, creates a clean code PR on develop containing only
     PCF control and plugin changes from the feature branch.
 
 .DESCRIPTION
-    Automates the post-transport clean code PR workflow:
+    Automates the post-stage clean code PR workflow:
       1. Detects which src/controls/ and src/plugins/ directories changed on
          the feature branch vs develop (using git diff on remote branches).
       2. Creates a new branch chore/{WorkItemNumber}_code from develop.
@@ -19,7 +19,7 @@
     Prerequisites:
       - 'gh' CLI installed and authenticated (run 'gh auth status' to verify)
       - Feature branch has been pushed to origin
-      - Transport workflow has already completed successfully
+      - stage workflow has already completed successfully
 
 .PARAMETER FeatureBranch
     Full feature branch name (e.g., feat/AB34567_StatusBadge).
@@ -39,7 +39,7 @@
     Useful when you still need to populate EV values before merging.
 
 .EXAMPLE
-    # Standard usage after transport:
+    # Standard usage after stage:
     .\Create-FeatureCodePR.ps1 -FeatureBranch "feat/AB34567_StatusBadge" -WorkItemNumber "AB34567" -Description "StatusBadge PCF control"
 
 .EXAMPLE
@@ -207,7 +207,7 @@ $prBody = @"
 
 This PR contains only code-first components (PCF controls and/or plugins) extracted from \`$FeatureBranch\`.
 
-**Solution components** (tables, forms, flows, etc.) were already committed to \`$BaseBranch\` by the transport workflow sync commit.
+**Solution components** (tables, forms, flows, etc.) were already committed to \`$BaseBranch\` by the stage workflow sync commit.
 
 ### Included
 $includedList

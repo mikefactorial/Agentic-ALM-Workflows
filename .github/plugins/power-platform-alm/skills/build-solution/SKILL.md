@@ -100,5 +100,5 @@ Read from `environment-config.json`: dev-test environments are in `environments[
 2. Sync solution to feature branch (sync-solution)
 3. Use deploy-solution for dev-test validation
 4. Test in dev-test
-5. If validated: transport to dev, merge feature branch → develop
+5. If validated: stage to dev, merge feature branch → develop
 ```

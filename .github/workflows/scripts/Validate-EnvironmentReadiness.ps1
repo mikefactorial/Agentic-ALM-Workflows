@@ -26,7 +26,7 @@
     Path to the deployments/settings directory. Defaults to 'deployments/settings'.
 
 .EXAMPLE
-    .\Validate-FeatureTransport.ps1 -FeatureSolutionName "AB34567_StatusBadge" -MainSolutionName "pub_MySolution"
+    .\Validate-FeatureStage.ps1 -FeatureSolutionName "AB34567_StatusBadge" -MainSolutionName "pub_MySolution"
 #>
 [CmdletBinding()]
 param(

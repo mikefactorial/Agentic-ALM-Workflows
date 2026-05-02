@@ -1,6 +1,6 @@
-name: Transport Solution
+name: Stage Solution
 
-# Callable workflow — transport feature solution components from dev to integration.
+# Callable workflow — stage feature solution components from dev to integration.
 # Phase 1 (export-solution): exports from source env and uploads ZIP artifact.
 # Phase 2 (import-and-copy): downloads ZIP, imports to target, copies components.
 # Phase 3 (sync-solution): optionally syncs the target solution back to the repo.
@@ -25,7 +25,7 @@ on:
         required: true
         type: string
       sync_target_solution:
-        description: 'Sync target solution to repository after transport'
+        description: 'Sync target solution to repository after stage'
         required: false
         type: boolean
         default: true
@@ -38,7 +38,7 @@ on:
         description: 'Commit message for solution sync (if sync is enabled)'
         required: false
         type: string
-        default: 'chore: automated solution sync after transport'
+        default: 'chore: automated solution sync after stage'
       sync_branch_name:
         description: 'Branch name for solution sync (if sync is enabled)'
         required: false
@@ -53,9 +53,9 @@ on:
       HOOK_SECRETS:
         required: false
 
-# Ensure only one transport runs at a time
+# Ensure only one stage runs at a time
 concurrency:
-  group: transport-solution-${{ github.repository }}
+  group: Stage-Solution-${{ github.repository }}
   cancel-in-progress: false
 
 permissions:
@@ -88,7 +88,7 @@ jobs:
       - name: Export Solution
         shell: pwsh
         run: |
-          .platform\.github\workflows\scripts\Transport-Solution.ps1 `
+          .platform\.github\workflows\scripts\Stage-Solution.ps1 `
             -Phase Export `
             -sourceSolutionName "${{ inputs.source_solution_name }}" `
             -sourceEnvironmentUrl "${{ vars.DATAVERSE_URL }}" `
@@ -129,7 +129,7 @@ jobs:
       - name: Import Solution and Copy Components
         shell: pwsh
         run: |
-          .platform\.github\workflows\scripts\Transport-Solution.ps1 `
+          .platform\.github\workflows\scripts\Stage-Solution.ps1 `
             -Phase Import `
             -sourceSolutionName "${{ inputs.source_solution_name }}" `
             -targetSolutionName "${{ inputs.target_solution_name }}" `
@@ -138,11 +138,11 @@ jobs:
             -tenantId "${{ vars.AZURE_TENANT_ID }}" `
             -clientId "${{ vars.DATAVERSE_CLIENT_ID }}"
 
-      - name: Transport Summary
+      - name: stage Summary
         if: success()
         run: |
           echo "=========================================="
-          echo "✓ Solution Transport: SUCCESS"
+          echo "✓ Solution stage: SUCCESS"
           echo "=========================================="
           echo "  ✓ Exported '${{ inputs.source_solution_name }}' from ${{ inputs.source_environment }}"
           echo "  ✓ Imported '${{ inputs.source_solution_name }}' to ${{ inputs.target_environment }}"
@@ -204,8 +204,8 @@ jobs:
           $pr = gh pr create `
             --base "${{ inputs.sync_branch_name }}" `
             --head "${{ steps.branch.outputs.sync_branch }}" `
-            --title "chore(transport): sync ${{ inputs.target_solution_name }} after transport from ${{ inputs.source_environment }}" `
-            --body "Automated sync after transporting ``${{ inputs.source_solution_name }}`` from ``${{ inputs.source_environment }}`` → ``${{ inputs.target_environment }}``.`n`nRun: #${{ github.run_number }}"
+            --title "chore(stage): sync ${{ inputs.target_solution_name }} after stage from ${{ inputs.source_environment }}" `
+            --body "Automated sync after Staging ``${{ inputs.source_solution_name }}`` from ``${{ inputs.source_environment }}`` → ``${{ inputs.target_environment }}``.`n`nRun: #${{ github.run_number }}"
           Write-Host "Pull request created: $pr"
 
       - name: Sync Summary

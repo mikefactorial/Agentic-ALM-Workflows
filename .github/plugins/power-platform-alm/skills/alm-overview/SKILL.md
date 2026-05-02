@@ -21,7 +21,7 @@ This skill routes requests to the correct specialist skill. Read this first, the
 | `register-plugin` | Push plugin binary to dev; register or update message processing steps; register custom APIs |
 | `scaffold-plugin` | Create a new plugin project; wire into solution; register the first step |
 | `scaffold-pcf-control` | Create a new PCF control; wire into solution; push to dev |
-| `transport-solution` | Move validated feature from dev to dev; create clean code PR; complete inner-loop handoff |
+| `stage-solution` | Stage validated feature from dev to integration; create clean code PR; complete inner-loop handoff |
 | `create-release` | Merge develop → main; build release packages; create GitHub Release |
 | `deploy-package` | Deploy a release package to test or production via `pac package deploy` |
 
@@ -41,7 +41,7 @@ Every ALM task depends on values from `deployments/settings/environment-config.j
 
 | Loop | Covers | Skills |
 |------|--------|--------|
-| **Inner loop** | Feature dev → dev → dev-test → dev transport | `start-feature`, `build-solution`, `deploy-solution`, `sync-solution`, `register-plugin`, `scaffold-plugin`, `scaffold-pcf-control`, `transport-solution` |
+| **Inner loop** | Feature dev → dev → dev-test → stage to integration | `start-feature`, `build-solution`, `deploy-solution`, `sync-solution`, `register-plugin`, `scaffold-plugin`, `scaffold-pcf-control`, `stage-solution` |
 | **Outer loop** | develop → main → release package → test/prod | `create-release`, `deploy-package` |
 
 Never mix the two loops — `pac package deploy` (outer) is not interchangeable with `pac solution import` (inner).
@@ -55,9 +55,9 @@ Never mix the two loops — `pac package deploy` (outer) is not interchangeable 
 
 All PowerShell scripts are at `.platform/.github/workflows/scripts/` in the client repo. The `.platform/` directory is a git submodule pointing to `Agentic-ALM-Workflows`. If `.platform/` is empty, the user must run `.\Initialize-Submodules.ps1` first.
 
-### Transport goes through GitHub Actions
+### Staging goes through GitHub Actions
 
-Never run transport locally and push to `develop`. The `transport-solution.yml` workflow is the only supported transport path — branch protection blocks direct pushes to `develop` for non-admins.
+Never run staging locally and push to `develop`. The `stage-solution.yml` workflow is the only supported staging path — branch protection blocks direct pushes to `develop` for non-admins.
 
 ### PCF controls are never auto-tracked
 
@@ -79,7 +79,7 @@ After `pac pcf push`, the control must be manually added to the feature solution
 | "deploy to dev", "deploy to dev-test", "import to test environment" | `deploy-solution` |
 | "sync the solution", "export from Dataverse", "capture changes from environment" | `sync-solution` |
 | "config data", "create schema", "export records", "import data", "seed data", "pac data" | `manage-config-data` |
-| "transport to dev", "promote feature", "complete inner loop", "move to develop" | `transport-solution` |
+| "stage to integration", "stage feature", "promote feature", "complete inner loop", "move to develop" | `stage-solution` |
 | "cut a release", "merge develop to main", "create release package" | `create-release` |
 | "deploy to test", "deploy to prod", "run outer-loop deployment" | `deploy-package` |
 | "set up the repo", "configure for new client", "fill in environment-config" | `setup-client-repo` |

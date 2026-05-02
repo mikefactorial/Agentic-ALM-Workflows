@@ -1,9 +1,9 @@
 ---
-name: transport-solution
-description: 'Transport solution components from a dev environment to dev. Use when: promoting a feature from dev to integration, completing inner-loop development, handing off a validated feature, moving components from a feature solution to the main solution.'
+name: stage-solution
+description: 'Stage solution components from a dev environment to integration. Use when: promoting a feature from dev to integration, completing inner-loop development, handing off a validated feature, moving components from a feature solution to the main solution.'
 ---
 
-# Transport Solution (Move to Dev)
+# Stage Solution (Stage to Integration)
 
 Move a validated feature from dev/dev-test into the dev integration environment and the `develop` branch. This is the final inner-loop step before a release.
 
@@ -36,18 +36,18 @@ A feature can contain two independent types of changes that travel via **differe
 
 | Change type | Examples | Path to `develop` |
 |-------------|----------|-------------------|
-| **Solution components** | Tables, forms, views, flows, EVs, choices | Transport workflow → committed directly to `develop` |
+| **Solution components** | Tables, forms, views, flows, EVs, choices | stage workflow → committed directly to `develop` |
 | **Code-first components** | PCF controls, plugins | Clean code PR → feature branch → `develop` |
 
 **The feature branch is never merged directly to `develop`.**
-- Solution metadata from the feature branch went to `develop` via the transport sync commit.
-- Code-first changes go to `develop` via a separate clean PR (branched off `develop` after transport).
+- Solution metadata from the feature branch went to `develop` via the stage sync commit.
+- Code-first changes go to `develop` via a separate clean PR (branched off `develop` after stage).
 - The feature solution (`src/solutions/{feature}/`) and its settings template never belong in `develop`.
 
 ```
 feature branch ──────────────────────────────── (abandoned after extraction)
       │                                  │
-      ├─ Transport ──────────────────► develop  ({mainSolution} sync commit)
+      ├─ stage ──────────────────► develop  ({mainSolution} sync commit)
       │
       └─ clean code PR (from develop) ─► develop  (PCF/plugin source + EV values)
 ```
@@ -58,8 +58,8 @@ feature branch ─────────────────────�
 
 Read from `environment-config.json`: for each solution area, `solutionAreas[x].devEnv` is the source slug and `solutionAreas[x].integrationEnv` is the target slug. Resolve both URLs from `innerLoopEnvironments[].url`.
 
-> **Optional integration environment**: Before running transport, check whether `solutionAreas[x].integrationEnv` resolves to a real URL in `innerLoopEnvironments[]`. If the URL value is a `{{PLACEHOLDER}}` or the slug maps to nothing, this repo was configured without a dedicated integration environment. In that case, ask the user:
-> *"Your repo doesn't have an integration environment configured. Which environment should be used as the transport target? (e.g. your test or UAT environment slug)"*
+> **Optional integration environment**: Before running stage, check whether `solutionAreas[x].integrationEnv` resolves to a real URL in `innerLoopEnvironments[]`. If the URL value is a `{{PLACEHOLDER}}` or the slug maps to nothing, this repo was configured without a dedicated integration environment. In that case, ask the user:
+> *"Your repo doesn't have an integration environment configured. Which environment should be used as the stage target? (e.g. your test or UAT environment slug)"*
 > Use the user-provided slug and resolve its URL from `environments[]` instead. If the user-provided URL is also a placeholder, fail with a clear message explaining the environment is not yet configured in `environment-config.json`.
 
 ---
@@ -70,11 +70,11 @@ A feature is **not complete** until every applicable step below is finished:
 
 | Feature type | Required steps | Complete when |
 |---|---|---|
-| Solution-only | Steps 2a → 2b → 2c | Transport sync commit is on `develop` |
+| Solution-only | Steps 2a → 2b → 2c | stage sync commit is on `develop` |
 | Code-first-only | Step 3 | Code PR is merged to `develop` |
-| **Mixed (PCF and/or plugins + Dataverse components)** | **Steps 2a → 2b → 2c → 3** | **Transport sync commit AND code PR are both merged** |
+| **Mixed (PCF and/or plugins + Dataverse components)** | **Steps 2a → 2b → 2c → 3** | **stage sync commit AND code PR are both merged** |
 
-> **Do not stop after transport.** Transport moves solution metadata only. PCF controls and plugins never travel via transport — they require a separate code PR (Step 3). If you stop after transport on a mixed feature, the code-first changes are permanently orphaned on the feature branch.
+> **Do not stop after stage.** stage moves solution metadata only. PCF controls and plugins never travel via stage — they require a separate code PR (Step 3). If you stop after stage on a mixed feature, the code-first changes are permanently orphaned on the feature branch.
 
 ---
 
@@ -88,16 +88,16 @@ Before starting, classify the changes:
 - **Code-first-only feature** (no Dataverse component changes): Step 3 only, then done.
 - **Mixed feature** (both): Steps 2a → 2b → 2c → **then immediately Step 3** — the feature is not done until the code PR is merged.
 
-Also identify any **new environment variables** added by this feature — these need values populated for all target environments before transport (Step 2a).
+Also identify any **new environment variables** added by this feature — these need values populated for all target environments before stage (Step 2a).
 
-### Step 2 — Validate and Transport Solution Components
+### Step 2 — Validate and Stage Solution Components
 
-#### 2a. Validate EVs and Connection References (required before transport)
+#### 2a. Validate EVs and Connection References (required before stage)
 
-Run the pre-transport validation script to confirm that all environment variables and connection references in the feature template have values populated for every deployment environment:
+Run the Pre-Stage validation script to confirm that all environment variables and connection references in the feature template have values populated for every deployment environment:
 
 ```powershell
-.platform/.github/workflows/scripts/Validate-FeatureTransport.ps1 `
+.platform/.github/workflows/scripts/Validate-FeatureStage.ps1 `
     -FeatureSolutionName "{feature_solution}" `
     -MainSolutionName "{main_solution}"
 ```
@@ -111,11 +111,11 @@ Fix all `✗` errors before proceeding. Commit any changes to the feature branch
 
 > **EV type rules**: Number → decimal string (`"42"`), Boolean → `"true"`/`"false"`, JSON → valid JSON string, String → any value
 
-#### 2b. Execute Transport
+#### 2b. Execute stage
 
 ##### Via GitHub Actions Workflow (required)
 
-Actions → **Transport Solution** → Run workflow
+Actions → **Stage Solution** → Run workflow
 
 Inputs:
 - `source_solution_name`: Feature solution name (e.g., `AB9999_HelloWorldPCF`)
@@ -123,23 +123,23 @@ Inputs:
 - `source_environment_url`: dev environment URL (from `innerLoopEnvironments[]` in environment-config.json)
 - `target_environment_url`: integration environment URL — or the user-chosen alternative if integration is not configured (see Environment Mapping above)
 - `sync_target_solution`: `true`
-- `sync_commit_message`: `chore({mainSolution}): transport {tag} to integration {trailer}`
+- `sync_commit_message`: `chore({mainSolution}): stage {tag} to integration {trailer}`
 - `sync_branch_name`: `develop`
 
 ##### Via Local Script — NOT SUPPORTED
 
-> **⛔ Do not run `Transport-Solution.ps1` locally and then commit to `develop`.** The transport script calls `Sync-Solution.ps1 -branchName develop`, which pushes a commit directly to the `develop` branch. Only repository admins can bypass branch protection rules — all other contributors will be blocked. Even for admins, doing this locally skips the branch protection in spirit and makes the commit history harder to trace.
+> **⛔ Do not run `Stage-Solution.ps1` locally and then commit to `develop`.** The stage script calls `Sync-Solution.ps1 -branchName develop`, which pushes a commit directly to the `develop` branch. Only repository admins can bypass branch protection rules — all other contributors will be blocked. Even for admins, doing this locally skips the branch protection in spirit and makes the commit history harder to trace.
 >
-> **Always use the `transport-solution.yml` GitHub Actions workflow** (see above). This is the only supported path.
+> **Always use the `stage-solution.yml` GitHub Actions workflow** (see above). This is the only supported path.
 
-#### 2c. Verify Transport
+#### 2c. Verify stage
 
-After transport + sync:
+After stage + sync:
 - `develop` has a new commit with updated `src/solutions/{mainSolution}/` and `deployments/settings/templates/{mainSolution}_template.json`
-- The main solution in the integration environment contains the transported components
+- The main solution in the integration environment contains the staged components
 - If new EVs were added, `{mainSolution}_template.json` on `develop` will now include them
 
-> **If this is a mixed feature (has PCF controls or plugins): do not stop here. Proceed immediately to Step 3.** Transport only moved solution metadata. The code-first components are still only on the feature branch.
+> **If this is a mixed feature (has PCF controls or plugins): do not stop here. Proceed immediately to Step 3.** stage only moved solution metadata. The code-first components are still only on the feature branch.
 
 ### Step 3 — Create the Clean Code PR
 
@@ -199,8 +199,8 @@ After the clean code PR is merged:
 
 | Artifact | Destination | How |
 |----------|------------|-----|
-| Updated `src/solutions/{mainSolution}/` | `develop` | Transport sync commit |
-| Updated `{mainSolution}_template.json` | `develop` | Transport sync commit |
+| Updated `src/solutions/{mainSolution}/` | `develop` | stage sync commit |
+| Updated `{mainSolution}_template.json` | `develop` | stage sync commit |
 | `src/controls/{solution}/{Control}/` | `develop` | Clean code PR |
 | `src/plugins/{solution}/{Plugin}/` | `develop` | Clean code PR |
 | `deployments/data/{mainSolution}/` | `develop` | Clean code PR (merge-based) |

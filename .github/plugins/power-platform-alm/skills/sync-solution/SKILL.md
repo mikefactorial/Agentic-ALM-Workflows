@@ -16,7 +16,7 @@ Export a solution from a Dataverse environment, unpack it, and commit the metada
 
 | Need | Use instead |
 |------|-------------|
-| Transport a validated feature from dev to dev | `transport-solution` |
+| stage a validated feature from dev to dev | `Stage-Solution` |
 | Deploy a solution to dev or dev-test | `deploy-solution` |
 | Build a solution ZIP | `build-solution` |
 | Create and run a full dev-test deployment | `deploy-solution` |
@@ -50,18 +50,18 @@ Alternatively, sync only (without build/deploy):
     -skipGitCommit
 ```
 
-### Context B: Post-Transport (integration → develop branch)
+### Context B: post-stage (integration → develop branch)
 
-After a feature has been transported, sync the main solution FROM the integration (or equivalent) environment TO the `develop` branch.
+After a feature has been staged, sync the main solution FROM the integration (or equivalent) environment TO the `develop` branch.
 
 **First, determine the source environment:** Read `solutionAreas[x].integrationEnv` from `environment-config.json` and look up its URL in `innerLoopEnvironments[]`. If the URL is a `{{PLACEHOLDER}}`, this repo has no dedicated integration environment — ask the user:
-> *"Your repo doesn't have an integration environment configured. Which environment should be synced from after transport? (e.g. your dev or test environment slug)"*
+> *"Your repo doesn't have an integration environment configured. Which environment should be synced from after stage? (e.g. your dev or test environment slug)"*
 Use the user-provided slug and resolve its URL from `innerLoopEnvironments[]` or `environments[]`.
 
 1. **Actions** → **Sync Solution** → **Run workflow**
 2. Select environment: the resolved integration (or alternative) environment slug
 3. Enter solution name: main solution (e.g., `{solutionPrefix}_{solutionName}` — read from `solutionAreas[x].mainSolution`)
-4. Enter commit message: `chore: sync {solution} from {environment} {trailer}` (include the trailer only when sync is part of a tracked work item; omit for routine post-transport syncs to `develop`)
+4. Enter commit message: `chore: sync {solution} from {environment} {trailer}` (include the trailer only when sync is part of a tracked work item; omit for routine post-stage syncs to `develop`)
 5. Enter branch: `develop`
 
 #### integration environment mapping:
