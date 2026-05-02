@@ -211,25 +211,28 @@ No renaming of any files or folders is needed — the package project uses a fix
 
 ### 4. Set Up GitHub Environments
 
-Use the GitHub CLI to create each environment and set its variables. Run the following for each slug in `environments[]` — substituting the actual slug, URL, and client ID:
+Use the GitHub CLI to create each environment and set its variables. You need to do this for **all** environments — both inner loop (`innerLoopEnvironments[]`) and deployment (`environments[]`).
 
 ```powershell
-# Repeat for each deployment environment (e.g. acme-dev-test, acme-test, acme-prod)
+# Repeat for EVERY environment in innerLoopEnvironments[] and environments[]:
+#   e.g. acme-dev, acme-integration, acme-dev-test, acme-test, acme-prod
 $org      = "<githubOrg>"
 $repo     = "<repoName>"
-$slug     = "<env-slug>"         # e.g. acme-test
-$url      = "<dataverse-url>"    # e.g. https://org-tst22222.crm.dynamics.com/
+$slug     = "<env-slug>"         # e.g. acme-dev
+$url      = "<dataverse-url>"    # e.g. https://org-dev12345.crm.dynamics.com/
 $clientId = "<client-id>"        # app registration client ID for this environment
 
 gh api --method PUT /repos/$org/$repo/environments/$slug
 gh variable set DATAVERSE_URL --env $slug --repo "$org/$repo" --body $url
 
 # DATAVERSE_CLIENT_ID is optional here — skip if the app registration isn't ready yet.
-# It must be set before running deployments to this environment.
+# It must be set before running any CI workflow against this environment.
 if ($clientId) {
     gh variable set DATAVERSE_CLIENT_ID --env $slug --repo "$org/$repo" --body $clientId
 }
 ```
+
+> **All environments need a GitHub Environment** — including dev and integration. Inner loop workflows (`sync-solution`, `transport-solution`, `build-deploy-solution`) authenticate against dev and integration using OIDC, which requires a matching GitHub Environment with `DATAVERSE_URL` and `DATAVERSE_CLIENT_ID` variables.
 
 > **Approval gates** — after creating test and prod environments, go to **Settings → Environments → \<slug\>** in GitHub to add required reviewers. The `gh` CLI does not yet support configuring approval gates.
 
