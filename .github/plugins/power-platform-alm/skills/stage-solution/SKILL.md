@@ -36,18 +36,18 @@ A feature can contain two independent types of changes that travel via **differe
 
 | Change type | Examples | Path to `develop` |
 |-------------|----------|-------------------|
-| **Solution components** | Tables, forms, views, flows, EVs, choices | stage workflow → committed directly to `develop` |
+| **Solution components** | Tables, forms, views, flows, EVs, choices | Stage sync PR → merged to `develop` |
 | **Code-first components** | PCF controls, plugins | Clean code PR → feature branch → `develop` |
 
 **The feature branch is never merged directly to `develop`.**
-- Solution metadata from the feature branch went to `develop` via the stage sync commit.
-- Code-first changes go to `develop` via a separate clean PR (branched off `develop` after stage).
+- Solution metadata travels to `develop` via a sync PR created during Step 2.
+- Code-first changes go to `develop` via a separate clean code PR (Step 3).
 - The feature solution (`src/solutions/{feature}/`) and its settings template never belong in `develop`.
 
 ```
 feature branch ──────────────────────────────── (abandoned after extraction)
       │                                  │
-      ├─ stage ──────────────────► develop  ({mainSolution} sync commit)
+      ├─ stage sync PR ──────────► develop  ({mainSolution} sync, reviewed + merged)
       │
       └─ clean code PR (from develop) ─► develop  (PCF/plugin source + EV values)
 ```
@@ -70,9 +70,9 @@ A feature is **not complete** until every applicable step below is finished:
 
 | Feature type | Required steps | Complete when |
 |---|---|---|
-| Solution-only | Steps 2a → 2b → 2c | stage sync commit is on `develop` |
+| Solution-only | Steps 2a → 2b → 2c | Stage sync PR is merged to `develop` |
 | Code-first-only | Step 3 | Code PR is merged to `develop` |
-| **Mixed (PCF and/or plugins + Dataverse components)** | **Steps 2a → 2b → 2c → 3** | **stage sync commit AND code PR are both merged** |
+| **Mixed (PCF and/or plugins + Dataverse components)** | **Steps 2a → 2b → 2c → 3** | **Stage sync PR AND code PR are both merged** |
 
 > **Do not stop after stage.** stage moves solution metadata only. PCF controls and plugins never travel via stage — they require a separate code PR (Step 3). If you stop after stage on a mixed feature, the code-first changes are permanently orphaned on the feature branch.
 
@@ -111,35 +111,58 @@ Fix all `✗` errors before proceeding. Commit any changes to the feature branch
 
 > **EV type rules**: Number → decimal string (`"42"`), Boolean → `"true"`/`"false"`, JSON → valid JSON string, String → any value
 
-#### 2b. Execute stage
+#### 2b. Execute Stage (local)
 
-##### Via GitHub Actions Workflow (required)
+Run all three phases from the repo root:
 
-Actions → **Stage Solution** → Run workflow
+**Step 1 — Stage components (export → import → copy):**
+```powershell
+.platform/.github/workflows/scripts/Stage-Solution.ps1 `
+    -Phase All `
+    -sourceSolutionName "{feature_solution}" `
+    -targetSolutionName "{main_solution}" `
+    -sourceEnvironmentUrl "{devEnvUrl}" `
+    -targetEnvironmentUrl "{integrationEnvUrl}"
+```
+This uses interactive `pac` authentication (the current `pac auth` profile). Ensure you have an active auth profile pointed at both environments before running, or `pac` will prompt.
 
-Inputs:
-- `source_solution_name`: Feature solution name (e.g., `AB9999_HelloWorldPCF`)
-- `target_solution_name`: Main solution (e.g., `{solutionPrefix}_{solutionName}` from environment-config.json)
-- `source_environment_url`: dev environment URL (from `innerLoopEnvironments[]` in environment-config.json)
-- `target_environment_url`: integration environment URL — or the user-chosen alternative if integration is not configured (see Environment Mapping above)
-- `sync_target_solution`: `true`
-- `sync_commit_message`: `chore({mainSolution}): stage {tag} to integration {trailer}`
-- `sync_branch_name`: `develop`
+**Step 2 — Sync the main solution from integration to a new branch:**
+```powershell
+$syncBranch = "sync/{mainSolution}-{tag}"
+git checkout develop
+git pull
+git checkout -b $syncBranch
 
-##### Via Local Script — NOT SUPPORTED
+.platform/.github/workflows/scripts/Sync-Solution.ps1 `
+    -solutionName "{main_solution}" `
+    -environmentUrl "{integrationEnvUrl}" `
+    -commitMessage "chore({mainSolution}): sync after staging {tag} to integration {trailer}" `
+    -branchName $syncBranch
+```
 
-> **⛔ Do not run `Stage-Solution.ps1` locally and then commit to `develop`.** The stage script calls `Sync-Solution.ps1 -branchName develop`, which pushes a commit directly to the `develop` branch. Only repository admins can bypass branch protection rules — all other contributors will be blocked. Even for admins, doing this locally skips the branch protection in spirit and makes the commit history harder to trace.
->
-> **Always use the `stage-solution.yml` GitHub Actions workflow** (see above). This is the only supported path.
+**Step 3 — Push the sync branch and open the PR:**
+```powershell
+git push origin $syncBranch
+gh pr create `
+    --base develop `
+    --head $syncBranch `
+    --title "chore({mainSolution}): sync after staging {tag} to integration" `
+    --body "Automated sync after staging ``{feature_solution}`` from dev → integration."
+```
 
-#### 2c. Verify stage
+> **Auth tip**: If you have separate `pac` auth profiles for dev and integration, use `pac auth select` to switch between them before each script call, or pass `-tenantId` / `-clientId` explicitly for non-interactive runs.
 
-After stage + sync:
-- `develop` has a new commit with updated `src/solutions/{mainSolution}/` and `deployments/settings/templates/{mainSolution}_template.json`
+#### 2c. Verify Stage
+
+After stage + sync PR is open:
 - The main solution in the integration environment contains the staged components
-- If new EVs were added, `{mainSolution}_template.json` on `develop` will now include them
+- The sync branch (`sync/{mainSolution}-{tag}`) has updated `src/solutions/{mainSolution}/` and `deployments/settings/templates/{mainSolution}_template.json`
+- The PR is open against `develop` and ready for review/merge
+- If new EVs were added, `{mainSolution}_template.json` on the sync branch will now include them
 
-> **If this is a mixed feature (has PCF controls or plugins): do not stop here. Proceed immediately to Step 3.** stage only moved solution metadata. The code-first components are still only on the feature branch.
+Merge the sync PR once reviewed. After merge, `develop` reflects the staged components.
+
+> **If this is a mixed feature (has PCF controls or plugins): do not stop here. Proceed immediately to Step 3.** Stage only moved solution metadata. The code-first components are still only on the feature branch.
 
 ### Step 3 — Create the Clean Code PR
 
@@ -199,8 +222,8 @@ After the clean code PR is merged:
 
 | Artifact | Destination | How |
 |----------|------------|-----|
-| Updated `src/solutions/{mainSolution}/` | `develop` | stage sync commit |
-| Updated `{mainSolution}_template.json` | `develop` | stage sync commit |
+| Updated `src/solutions/{mainSolution}/` | `develop` | Stage sync PR (merged) |
+| Updated `{mainSolution}_template.json` | `develop` | Stage sync PR (merged) |
 | `src/controls/{solution}/{Control}/` | `develop` | Clean code PR |
 | `src/plugins/{solution}/{Plugin}/` | `develop` | Clean code PR |
 | `deployments/data/{mainSolution}/` | `develop` | Clean code PR (merge-based) |

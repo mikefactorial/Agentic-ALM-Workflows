@@ -55,9 +55,9 @@ Never mix the two loops — `pac package deploy` (outer) is not interchangeable 
 
 All PowerShell scripts are at `.platform/.github/workflows/scripts/` in the client repo. The `.platform/` directory is a git submodule pointing to `Agentic-ALM-Workflows`. If `.platform/` is empty, the user must run `.\Initialize-Submodules.ps1` first.
 
-### Staging goes through GitHub Actions
+### Staging runs locally
 
-Never run staging locally and push to `develop`. The `stage-solution.yml` workflow is the only supported staging path — branch protection blocks direct pushes to `develop` for non-admins.
+The staging process (`stage-solution` skill) runs fully locally using `Stage-Solution.ps1` and `Sync-Solution.ps1`. It no longer requires the `stage-solution.yml` GitHub Actions workflow. The sync to `develop` is done via a PR from a local sync branch — not a direct push — so branch protection is respected without elevated permissions.
 
 ### PCF controls are never auto-tracked
 
