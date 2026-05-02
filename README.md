@@ -27,13 +27,15 @@ All script invocations use `.platform/.github/workflows/scripts/<Script>.ps1`.
 
 ## Authentication Requirements
 
-All callable workflows require the following secrets (passed via `secrets: inherit` from callers):
+All callable workflows require the following secrets and variables (passed via `secrets: inherit` / `vars` from callers):
 
-| Secret | Required By | Purpose |
-|--------|------------|---------|
-| `APP_ID` | All workflows | GitHub App ID for cross-repo checkout + git push |
-| `APP_PRIVATE_KEY` | All workflows | GitHub App private key |
-| `HOOK_SECRETS` | Workflows using hooks | Hook context secrets |
+| Name | Type | Required By | Purpose |
+|------|------|------------|---------|
+| `APP_ID` | secret | All workflows | GitHub App ID for cross-repo checkout + git push |
+| `APP_PRIVATE_KEY` | secret | All workflows | GitHub App private key |
+| `HOOK_SECRETS` | secret | Workflows using hooks | Hook context secrets (JSON object, initialize to `{}`) |
+| `AZURE_TENANT_ID` | variable | All workflows | Azure AD tenant for OIDC authentication |
+| `HOOK_VARIABLES` | variable | Workflows using hooks | Non-secret hook parameters (JSON object, initialize to `{}`) |
 
 The GitHub App must be installed on both the caller repo and this repo (`Agentic-ALM-Workflows`).
 
@@ -76,9 +78,15 @@ deploy-package.yml (manual)
 
 Caller repos reference this repo as `.platform` submodule. The `Agentic-ALM-Template` repo provides the full setup — see its `SETUP.md` for onboarding instructions.
 
-| `deploy-package.yml` | Outer-loop package deployment |
-| `create-release-package.yml` | Build all packages + create GitHub Release |
-| `pr-validation.yml` | Validate plugin/PCF/settings in PRs |
+## Agent Skills (Plugin)
+
+ALM tasks (syncing solutions, starting features, deploying, releasing, scaffolding plugins and PCF controls) are automated through the `power-platform-alm` Copilot plugin defined in `.github/plugins/power-platform-alm/`.
+
+**Install in VS Code:**
+1. Open the Extensions view (`Ctrl+Shift+X`) and search `@agentPlugins power-platform-alm`, **or**
+2. Command Palette → `Chat: Install Plugin From Source` → `https://github.com/mikefactorial/Agentic-ALM-Workflows`
+
+Once installed, describe any ALM task in plain English — the `alm-overview` router skill picks the right specialist automatically.
 
 ## Versioning
 
