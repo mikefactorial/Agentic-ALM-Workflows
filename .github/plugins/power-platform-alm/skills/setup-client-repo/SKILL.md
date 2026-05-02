@@ -326,14 +326,69 @@ This initializes the `.platform` submodule to the latest `Agentic-ALM-Workflows`
 
 ---
 
-### 8. Set Up Branch Protection
+### 8. Commit Setup Changes and Create Develop Branch
 
-In GitHub → Settings → Branches, add rules:
+With all config files updated, commit everything to `main` and create the `develop` branch:
 
-- **`main`**: Require PR, restrict to `develop` or `hotfix/*` source (enforced by `check-source-branch.yml`)
-- **`develop`**: Require PR review; no force push; no direct push for non-admins
+```powershell
+$org  = "<githubOrg>"
+$repo = "<repoName>"
+
+# Stage and commit all setup changes
+git add -A
+git commit -m "chore: initial repo setup — environment-config, package project, GitHub environments"
+git push origin main
+
+# Create develop branch from main if it doesn't exist
+$developExists = git ls-remote --heads origin develop
+if (-not $developExists) {
+    git checkout -b develop
+    git push origin develop
+    git checkout main
+    Write-Host "✓ develop branch created" -ForegroundColor Green
+} else {
+    Write-Host "  develop branch already exists — skipping" -ForegroundColor Yellow
+}
+```
 
 ---
+
+### 9. Set Up Branch Protection
+
+Use the GitHub CLI to configure branch protection rules for both `main` and `develop`:
+
+```powershell
+$org  = "<githubOrg>"
+$repo = "<repoName>"
+
+# Protect main — require PR, no direct pushes, no force push
+gh api --method PUT /repos/$org/$repo/branches/main/protection `
+    --field required_status_checks=null `
+    --field enforce_admins=false `
+    --field "required_pull_request_reviews[dismiss_stale_reviews]=true" `
+    --field "required_pull_request_reviews[required_approving_review_count]=1" `
+    --field "restrictions=null" `
+    --field allow_force_pushes=false `
+    --field allow_deletions=false
+
+# Protect develop — require PR review, no direct pushes, no force push
+gh api --method PUT /repos/$org/$repo/branches/develop/protection `
+    --field required_status_checks=null `
+    --field enforce_admins=false `
+    --field "required_pull_request_reviews[dismiss_stale_reviews]=true" `
+    --field "required_pull_request_reviews[required_approving_review_count]=1" `
+    --field "restrictions=null" `
+    --field allow_force_pushes=false `
+    --field allow_deletions=false
+
+Write-Host "✓ Branch protection configured for main and develop" -ForegroundColor Green
+```
+
+> **Source branch enforcement for `main`**: The `check-source-branch.yml` workflow enforces that PRs to `main` only come from `develop` or `hotfix/*`. The GitHub API does not support branch name pattern restrictions at the branch protection level — this is enforced at the workflow level instead.
+
+> **Admins bypass by default** (`enforce_admins=false`). Set to `true` to enforce for admins as well, but be aware this will block you from bypassing during incidents.
+
+> **Review count**: `required_approving_review_count=1` is a sensible default. Set to `0` if the team works solo (no reviewer available), or increase for larger teams.
 
 ## Next Steps
 
