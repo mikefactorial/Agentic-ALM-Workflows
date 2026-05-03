@@ -22,7 +22,7 @@ This skill routes requests to the correct specialist skill. Read this first, the
 | `register-plugin` | Push plugin binary to dev; register or update message processing steps; register custom APIs |
 | `scaffold-plugin` | Create a new plugin project; wire into solution; register the first step |
 | `scaffold-pcf-control` | Create a new PCF control; wire into solution; push to dev |
-| `stage-solution` | Stage validated feature from dev to integration; create clean code PR; complete inner-loop handoff |
+| `promote-solution` | Promote validated feature from dev to integration; create clean code PR; complete inner-loop handoff |
 | `create-release` | Merge develop → main; build release packages; create GitHub Release |
 | `deploy-package` | Deploy a release package to test or production via `pac package deploy` |
 
@@ -42,7 +42,7 @@ Every ALM task depends on values from `deployments/settings/environment-config.j
 
 | Loop | Covers | Skills |
 |------|--------|--------|
-| **Inner loop** | Feature dev → dev → dev-test → stage to integration | `start-feature`, `build-solution`, `deploy-solution`, `sync-solution`, `register-plugin`, `scaffold-plugin`, `scaffold-pcf-control`, `stage-solution` |
+| **Inner loop** | Feature dev → dev → dev-test → promote to integration | `start-feature`, `build-solution`, `deploy-solution`, `sync-solution`, `register-plugin`, `scaffold-plugin`, `scaffold-pcf-control`, `promote-solution` |
 | **Outer loop** | develop → main → release package → test/prod | `create-release`, `deploy-package` |
 
 Never mix the two loops — `pac package deploy` (outer) is not interchangeable with `pac solution import` (inner).
@@ -56,9 +56,9 @@ Never mix the two loops — `pac package deploy` (outer) is not interchangeable 
 
 All PowerShell scripts are at `.platform/.github/workflows/scripts/` in the client repo. The `.platform/` directory is a git submodule pointing to `Agentic-ALM-Workflows`. If `.platform/` is empty, the user must run `.\Initialize-Submodules.ps1` first.
 
-### Staging runs locally
+### Promotion runs locally
 
-The staging process (`stage-solution` skill) runs fully locally using `Stage-Solution.ps1` and `Sync-Solution.ps1`. It no longer requires the `stage-solution.yml` GitHub Actions workflow. The sync to `develop` is done via a PR from a local sync branch — not a direct push — so branch protection is respected without elevated permissions.
+The promotion process (`promote-solution` skill) runs fully locally using `Promote-Solution.ps1` and `Sync-Solution.ps1`. It no longer requires the `promote-solution.yml` GitHub Actions workflow. The sync to `develop` is done via a PR from a local sync branch — not a direct push — so branch protection is respected without elevated permissions.
 
 ### PCF controls are never auto-tracked
 
@@ -80,7 +80,7 @@ After `pac pcf push`, the control must be manually added to the feature solution
 | "deploy to dev", "deploy to dev-test", "import to test environment" | `deploy-solution` |
 | "sync the solution", "export from Dataverse", "capture changes from environment" | `sync-solution` |
 | "config data", "create schema", "export records", "import data", "seed data", "pac data" | `manage-config-data` |
-| "stage to integration", "stage feature", "promote feature", "complete inner loop", "move to develop" | `stage-solution` |
+| "promote to integration", "promote feature", "promote feature", "complete inner loop", "move to develop" | `promote-solution` |
 | "cut a release", "merge develop to main", "create release package" | `create-release` |
 | "deploy to test", "deploy to prod", "run outer-loop deployment" | `deploy-package` |
 | "set up the repo", "configure for new client", "fill in environment-config" | `setup-client-repo` |

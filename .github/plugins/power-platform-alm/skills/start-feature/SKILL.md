@@ -167,7 +167,7 @@ pac solution import `
     --force-overwrite --publish-changes --activate-plugins
 ```
 
-For dev-test validation (before Staging to dev):
+For dev-test validation (before Promoting to dev):
 
 ```powershell
 # Use the deploy-solution skill/workflow path so the required sequence is followed:
@@ -186,6 +186,6 @@ Or trigger the `build-deploy-solution` GitHub Actions workflow (no sync required
 3. Build + deploy to dev-test           → deploy-solution skill
 4. Test in dev-test
 5. Repeat until validated
-6. stage to dev                         → Stage-Solution skill
+6. promote to dev                         → Promote-Solution skill
 7. Merge feature branch → develop (PR)
 ```

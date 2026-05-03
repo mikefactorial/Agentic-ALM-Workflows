@@ -227,7 +227,7 @@ if ($performGitOperations) {
                 git checkout $branchName 2>&1 | Out-Null
                 
                 if ($baseBranch) {
-                    # Staging branch mode: always reset to origin/<baseBranch> so the diff is minimal and clean
+                    # Promotion branch mode: always reset to origin/<baseBranch> so the diff is minimal and clean
                     Write-Host "Resetting to origin/$baseBranch (base branch reset)..." -ForegroundColor Cyan
                     git reset --hard "origin/$baseBranch" 2>&1 | Out-Null
                     if ($LASTEXITCODE -ne 0) {
@@ -876,7 +876,7 @@ if ($performGitOperations) {
                     Write-Host ""
                     Write-Host "Pushing to remote..." -ForegroundColor Cyan
                     if ($baseBranch) {
-                        # Staging branch was reset to base branch HEAD — force push is required
+                        # Promotion branch was reset to base branch HEAD — force push is required
                         git push origin $pushBranch --force-with-lease 2>&1
                     } else {
                         git push origin $pushBranch 2>&1

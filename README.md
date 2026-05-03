@@ -46,7 +46,7 @@ The Azure AD app registration must be added as a Dataverse App User and have a f
 | `sync-solution.yml` | Export and unpack a solution from a Dataverse environment to the repo |
 | `build-deploy-solution.yml` | Build solution from branch and deploy to a target environment |
 | `sync-build-deploy-solution.yml` | Sync from environment, build, and deploy in one pass |
-| `stage-solution.yml` | Stage solution components from dev to integration (optional — inner loop can also run fully locally) |
+| `promote-solution.yml` | Stage solution components from dev to integration (optional — inner loop can also run fully locally) |
 | `create-release-package.yml` | Build all packages and create a versioned GitHub Release |
 | `deploy-package.yml` | Outer-loop package deployment via `pac package deploy` |
 | `validate-pull-request.yml` | Validate PR changes — detect changed components, build, run solution checker |
@@ -57,7 +57,7 @@ Scripts live in `.github/workflows/scripts/` and are used both by callable workf
 
 | Script | Purpose |
 |--------|---------|
-| `Stage-Solution.ps1` | Export feature solution from dev, import to integration. Supports `-Phase All/Export/Import` |
+| `Promote-Solution.ps1` | Export feature solution from dev, import to integration. Supports `-Phase All/Export/Import` |
 | `Sync-Solution.ps1` | Export and unpack a solution from an environment to the repo (used by `sync-solution.yml` and locally) |
 | `Build-Solutions.ps1` | Outer-loop CI build — builds all solution ZIPs from source |
 | `Build-Plugins.ps1` | Build plugin assemblies |
@@ -69,7 +69,7 @@ Scripts live in `.github/workflows/scripts/` and are used both by callable workf
 | `Initialize-FeatureSolution.ps1` | Create a feature solution in Dataverse and set it as preferred |
 | `Register-Plugin.ps1` | Register or update a plugin assembly and steps in Dataverse |
 | `Setup-GitHubFederatedCredentials.ps1` | Add OIDC federated credentials to an Azure AD app registration for one or more GitHub Environments (requires Azure CLI) |
-| `Validate-FeatureStage.ps1` | Pre-stage validation — check environment variables and connection references |
+| `Validate-FeaturePromotion.ps1` | Pre-stage validation — check environment variables and connection references |
 | `Validate-DeploymentSettings.ps1` | Validate deployment settings files before deploy |
 | `Validate-EnvironmentReadiness.ps1` | Confirm a Dataverse environment is reachable and configured |
 | `Create-FeatureCodePR.ps1` | Open a PR for code-first solution changes |
@@ -118,7 +118,7 @@ ALM tasks are automated through the `power-platform-alm` Copilot plugin. Skills 
 | `register-plugin` | Push plugin binary to dev; register or update message processing steps |
 | `scaffold-plugin` | Scaffold a new Dataverse plugin project and wire into the solution |
 | `scaffold-pcf-control` | Scaffold a new PCF control and wire into the solution |
-| `stage-solution` | Stage a validated feature from dev to integration via local scripts + sync PR |
+| `promote-solution` | Promote a validated feature from dev to integration via local scripts + sync PR |
 | `create-release` | Merge develop → main; build release packages; create a GitHub Release |
 | `deploy-package` | Deploy a release package to test or production via `pac package deploy` |
 
@@ -141,8 +141,8 @@ PR → validate-pull-request.yml
   Detects changed plugins/controls/solutions
   Builds changed components + runs solution checker
          ↓
-Stage-Solution.ps1 + Sync-Solution.ps1  (local inner loop)
-  Stages feature to integration via sync branch PR
+Promote-Solution.ps1 + Sync-Solution.ps1  (local inner loop)
+  Promotes feature to integration via sync branch PR
          ↓
 Merge develop → main
          ↓

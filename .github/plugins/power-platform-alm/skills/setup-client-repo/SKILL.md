@@ -87,7 +87,7 @@ Before proceeding, gather the following. Ask only for what is missing — do not
 Walk through these in order. Dev, Test, and Prod are required; Integration and Dev Test are optional.
 
 1. **Dev** *(required)* — "What is the URL of your dev environment? (e.g., `https://org-dev12345.crm.dynamics.com/`)"
-2. **Integration** *(optional)* — "Do you have a shared integration environment where features are assembled and staged before release? *(Skip this if developers work directly from dev to test.)*" → if yes: "What is the URL? (e.g., `https://org-int67890.crm.dynamics.com/`)"
+2. **Integration** *(optional)* — "Do you have a shared integration environment where features are assembled and promoted before release? *(Skip this if developers work directly from dev to test.)*" → if yes: "What is the URL? (e.g., `https://org-int67890.crm.dynamics.com/`)"
 3. **Dev Test** *(optional)* — "Do you have a dev-test environment for validating individual features before they reach integration or UAT?" → if yes: "What is the URL? (e.g., `https://org-dvt11111.crm.dynamics.com/`)"
 4. **Test / UAT** *(required)* — "What is the URL of your test or UAT environment? (e.g., `https://org-tst22222.crm.dynamics.com/`)"
 5. **Production** *(required)* — "What is the URL of your production environment? (e.g., `https://org-prd33333.crm.dynamics.com/`)"
@@ -234,7 +234,7 @@ gh variable set DATAVERSE_CLIENT_ID --env <env-slug-2> --repo "$org/$repo" --bod
 # ... repeat for each remaining environment (acme-dev-test, acme-test, acme-prod, etc.)
 ```
 
-> **All environments need a GitHub Environment** — including dev and integration. Inner loop workflows (`sync-solution`, `Stage-Solution`, `build-deploy-solution`) authenticate against dev and integration using OIDC, which requires a matching GitHub Environment with `DATAVERSE_URL` and `DATAVERSE_CLIENT_ID` variables.
+> **All environments need a GitHub Environment** — including dev and integration. Inner loop workflows (`sync-solution`, `Promote-Solution`, `build-deploy-solution`) authenticate against dev and integration using OIDC, which requires a matching GitHub Environment with `DATAVERSE_URL` and `DATAVERSE_CLIENT_ID` variables.
 
 > **Client ID not ready yet?** You can omit `DATAVERSE_CLIENT_ID` for any environment now and set it later — but the variable must be present before any CI workflow targets that environment.
 

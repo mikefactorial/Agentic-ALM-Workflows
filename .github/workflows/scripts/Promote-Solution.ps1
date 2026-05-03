@@ -38,7 +38,7 @@
     
 .EXAMPLE
     # Local testing - Full stage with interactive auth
-    .\Stage-Solution.ps1 `
+    .\Promote-Solution.ps1 `
         -Phase All `
         -sourceSolutionName "MyFeatureSolution" `
         -targetSolutionName "DevelopmentIntegrationSolution" `
@@ -47,7 +47,7 @@
 
 .EXAMPLE
     # GitHub Actions Job 1 - Export only (federated auth)
-    .\Stage-Solution.ps1 `
+    .\Promote-Solution.ps1 `
         -Phase Export `
         -sourceSolutionName "MyFeatureSolution" `
         -sourceEnvironmentUrl ${{ vars.DATAVERSE_URL }} `
@@ -56,7 +56,7 @@
         
 .EXAMPLE
     # GitHub Actions Job 2 - Import and copy (federated auth)
-    .\Stage-Solution.ps1 `
+    .\Promote-Solution.ps1 `
         -Phase Import `
         -sourceSolutionName "MySourceSolution" `
         -targetSolutionName "MyTargetSolution" `

@@ -1,9 +1,9 @@
 ---
-name: stage-solution
-description: 'Stage solution components from a dev environment to integration. Use when: promoting a feature from dev to integration, completing inner-loop development, handing off a validated feature, moving components from a feature solution to the main solution.'
+name: promote-solution
+description: 'Promote solution components from a dev environment to integration. Use when: promoting a feature from dev to integration, completing inner-loop development, handing off a validated feature, moving components from a feature solution to the main solution.'
 ---
 
-# Stage Solution (Stage to Integration)
+# Promote Solution (Stage to Integration)
 
 Move a validated feature from dev/dev-test into the dev integration environment and the `develop` branch. This is the final inner-loop step before a release.
 
@@ -36,7 +36,7 @@ A feature can contain two independent types of changes that travel via **differe
 
 | Change type | Examples | Path to `develop` |
 |-------------|----------|-------------------|
-| **Solution components** | Tables, forms, views, flows, EVs, choices | Stage sync PR → merged to `develop` |
+| **Solution components** | Tables, forms, views, flows, EVs, choices | Promotion sync PR → merged to `develop` |
 | **Code-first components** | PCF controls, plugins | Clean code PR → feature branch → `develop` |
 
 **The feature branch is never merged directly to `develop`.**
@@ -47,7 +47,7 @@ A feature can contain two independent types of changes that travel via **differe
 ```
 feature branch ──────────────────────────────── (abandoned after extraction)
       │                                  │
-      ├─ stage sync PR ──────────► develop  ({mainSolution} sync, reviewed + merged)
+      ├─ promotion sync PR ──────────► develop  ({mainSolution} sync, reviewed + merged)
       │
       └─ clean code PR (from develop) ─► develop  (PCF/plugin source + EV values)
 ```
@@ -59,7 +59,7 @@ feature branch ─────────────────────�
 Read from `environment-config.json`: for each solution area, `solutionAreas[x].devEnv` is the source slug and `solutionAreas[x].integrationEnv` is the target slug. Resolve both URLs from `innerLoopEnvironments[].url`.
 
 > **Optional integration environment**: Before running stage, check whether `solutionAreas[x].integrationEnv` resolves to a real URL in `innerLoopEnvironments[]`. If the URL value is a `{{PLACEHOLDER}}` or the slug maps to nothing, this repo was configured without a dedicated integration environment. In that case, ask the user:
-> *"Your repo doesn't have an integration environment configured. Which environment should be used as the stage target? (e.g. your test or UAT environment slug)"*
+> *"Your repo doesn't have an integration environment configured. Which environment should be used as the promote target? (e.g. your test or UAT environment slug)"*
 > Use the user-provided slug and resolve its URL from `environments[]` instead. If the user-provided URL is also a placeholder, fail with a clear message explaining the environment is not yet configured in `environment-config.json`.
 
 ---
@@ -70,11 +70,11 @@ A feature is **not complete** until every applicable step below is finished:
 
 | Feature type | Required steps | Complete when |
 |---|---|---|
-| Solution-only | Steps 2a → 2b → 2c | Stage sync PR is merged to `develop` |
+| Solution-only | Steps 2a → 2b → 2c | Promotion sync PR is merged to `develop` |
 | Code-first-only | Step 3 | Code PR is merged to `develop` |
-| **Mixed (PCF and/or plugins + Dataverse components)** | **Steps 2a → 2b → 2c → 3** | **Stage sync PR AND code PR are both merged** |
+| **Mixed (PCF and/or plugins + Dataverse components)** | **Steps 2a → 2b → 2c → 3** | **Promotion sync PR AND code PR are both merged** |
 
-> **Do not stop after stage.** stage moves solution metadata only. PCF controls and plugins never travel via stage — they require a separate code PR (Step 3). If you stop after stage on a mixed feature, the code-first changes are permanently orphaned on the feature branch.
+> **Do not stop after promote.** promote moves solution metadata only. PCF controls and plugins never travel via promote — they require a separate code PR (Step 3). If you stop after promote on a mixed feature, the code-first changes are permanently orphaned on the feature branch.
 
 ---
 
@@ -88,16 +88,16 @@ Before starting, classify the changes:
 - **Code-first-only feature** (no Dataverse component changes): Step 3 only, then done.
 - **Mixed feature** (both): Steps 2a → 2b → 2c → **then immediately Step 3** — the feature is not done until the code PR is merged.
 
-Also identify any **new environment variables** added by this feature — these need values populated for all target environments before stage (Step 2a).
+Also identify any **new environment variables** added by this feature — these need values populated for all target environments before promote (Step 2a).
 
-### Step 2 — Validate and Stage Solution Components
+### Step 2 — Validate and Promote Solution Components
 
-#### 2a. Validate EVs and Connection References (required before stage)
+#### 2a. Validate EVs and Connection References (required before promote)
 
-Run the Pre-Stage validation script to confirm that all environment variables and connection references in the feature template have values populated for every deployment environment:
+Run the Pre-Promote validation script to confirm that all environment variables and connection references in the feature template have values populated for every deployment environment:
 
 ```powershell
-.platform/.github/workflows/scripts/Validate-FeatureStage.ps1 `
+.platform/.github/workflows/scripts/Validate-FeaturePromotion.ps1 `
     -FeatureSolutionName "{feature_solution}" `
     -MainSolutionName "{main_solution}"
 ```
@@ -115,9 +115,9 @@ Fix all `✗` errors before proceeding. Commit any changes to the feature branch
 
 Run all three phases from the repo root:
 
-**Step 1 — Stage components (export → import → copy):**
+**Step 1 — Promote components (export → import → copy):**
 ```powershell
-.platform/.github/workflows/scripts/Stage-Solution.ps1 `
+.platform/.github/workflows/scripts/Promote-Solution.ps1 `
     -Phase All `
     -sourceSolutionName "{feature_solution}" `
     -targetSolutionName "{main_solution}" `
@@ -136,7 +136,7 @@ git checkout -b $syncBranch
 .platform/.github/workflows/scripts/Sync-Solution.ps1 `
     -solutionName "{main_solution}" `
     -environmentUrl "{integrationEnvUrl}" `
-    -commitMessage "chore({mainSolution}): sync after staging {tag} to integration {trailer}" `
+    -commitMessage "chore({mainSolution}): sync after promoting {tag} to integration {trailer}" `
     -branchName $syncBranch
 ```
 
@@ -146,8 +146,8 @@ git push origin $syncBranch
 gh pr create `
     --base develop `
     --head $syncBranch `
-    --title "chore({mainSolution}): sync after staging {tag} to integration" `
-    --body "Automated sync after staging ``{feature_solution}`` from dev → integration."
+    --title "chore({mainSolution}): sync after promoting {tag} to integration" `
+    --body "Automated sync after promoting ``{feature_solution}`` from dev → integration."
 ```
 
 > **Auth tip**: If you have separate `pac` auth profiles for dev and integration, use `pac auth select` to switch between them before each script call, or pass `-tenantId` / `-clientId` explicitly for non-interactive runs.
@@ -155,12 +155,12 @@ gh pr create `
 #### 2c. Verify Stage
 
 After stage + sync PR is open:
-- The main solution in the integration environment contains the staged components
+- The main solution in the integration environment contains the promoted components
 - The sync branch (`sync/{mainSolution}-{tag}`) has updated `src/solutions/{mainSolution}/` and `deployments/settings/templates/{mainSolution}_template.json`
 - The PR is open against `develop` and ready for review/merge
 - If new EVs were added, `{mainSolution}_template.json` on the sync branch will now include them
 
-Merge the sync PR once reviewed. After merge, `develop` reflects the staged components.
+Merge the sync PR once reviewed. After merge, `develop` reflects the promoted components.
 
 > **If this is a mixed feature (has PCF controls or plugins): do not stop here. Proceed immediately to Step 3.** Stage only moved solution metadata. The code-first components are still only on the feature branch.
 
@@ -222,8 +222,8 @@ After the clean code PR is merged:
 
 | Artifact | Destination | How |
 |----------|------------|-----|
-| Updated `src/solutions/{mainSolution}/` | `develop` | Stage sync PR (merged) |
-| Updated `{mainSolution}_template.json` | `develop` | Stage sync PR (merged) |
+| Updated `src/solutions/{mainSolution}/` | `develop` | Promotion sync PR (merged) |
+| Updated `{mainSolution}_template.json` | `develop` | Promotion sync PR (merged) |
 | `src/controls/{solution}/{Control}/` | `develop` | Clean code PR |
 | `src/plugins/{solution}/{Plugin}/` | `develop` | Clean code PR |
 | `deployments/data/{mainSolution}/` | `develop` | Clean code PR (merge-based) |

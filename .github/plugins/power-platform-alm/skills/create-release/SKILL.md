@@ -21,7 +21,7 @@ Guide the outer-loop release process: merge `develop` → `main`, trigger the au
 
 ## When to Use
 
-- All features for a release are staged and merged to `develop`
+- All features for a release are promoted and merged to `develop`
 - Ready to promote to test/production environments
 - Need to create versioned release packages
 
@@ -30,7 +30,7 @@ Guide the outer-loop release process: merge `develop` → `main`, trigger the au
 ### 1. Prerequisites Check
 
 Verify before proceeding:
-- All features staged from dev → integration environments
+- All features promoted from dev → integration environments
 - All feature branches merged to `develop`
 - `develop` branch passing PR validation checks
 - Deployment settings complete for all target environments

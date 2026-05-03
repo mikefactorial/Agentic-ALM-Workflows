@@ -210,4 +210,4 @@ pac data import `
 
 ## After Validation in dev-test
 
-stage the feature to dev using the `Stage-Solution` skill.
+promote the feature to dev using the `Promote-Solution` skill.

@@ -1,6 +1,6 @@
-name: Stage Solution
+name: Promote Solution
 
-# Callable workflow — stage feature solution components from dev to integration.
+# Callable workflow — promote feature solution components from dev to integration.
 # Phase 1 (export-solution): exports from source env and uploads ZIP artifact.
 # Phase 2 (import-and-copy): downloads ZIP, imports to target, copies components.
 # Phase 3 (sync-solution): optionally syncs the target solution back to the repo.
@@ -25,7 +25,7 @@ on:
         required: true
         type: string
       sync_target_solution:
-        description: 'Sync target solution to repository after stage'
+        description: 'Sync target solution to repository after promote'
         required: false
         type: boolean
         default: true
@@ -38,9 +38,9 @@ on:
         description: 'Commit message for solution sync (if sync is enabled)'
         required: false
         type: string
-        default: 'chore: automated solution sync after stage'
+        default: 'chore: automated solution sync after promote'
       sync_branch_name:
-        description: 'Base branch for the staging PR and direct commits (default: develop)'
+        description: 'Base branch for the promotion PR and direct commits (default: develop)'
         required: false
         type: string
         default: 'develop'
@@ -53,9 +53,9 @@ on:
       HOOK_SECRETS:
         required: false
 
-# Ensure only one stage runs at a time
+# Ensure only one promote runs at a time
 concurrency:
-  group: Stage-Solution-${{ github.repository }}
+  group: Promote-Solution-${{ github.repository }}
   cancel-in-progress: false
 
 permissions:
@@ -88,7 +88,7 @@ jobs:
       - name: Export Solution
         shell: pwsh
         run: |
-          .platform\.github\workflows\scripts\Stage-Solution.ps1 `
+          .platform\.github\workflows\scripts\Promote-Solution.ps1 `
             -Phase Export `
             -sourceSolutionName "${{ inputs.source_solution_name }}" `
             -sourceEnvironmentUrl "${{ vars.DATAVERSE_URL }}" `
@@ -129,7 +129,7 @@ jobs:
       - name: Import Solution and Copy Components
         shell: pwsh
         run: |
-          .platform\.github\workflows\scripts\Stage-Solution.ps1 `
+          .platform\.github\workflows\scripts\Promote-Solution.ps1 `
             -Phase Import `
             -sourceSolutionName "${{ inputs.source_solution_name }}" `
             -targetSolutionName "${{ inputs.target_solution_name }}" `
@@ -138,11 +138,11 @@ jobs:
             -tenantId "${{ vars.AZURE_TENANT_ID }}" `
             -clientId "${{ vars.DATAVERSE_CLIENT_ID }}"
 
-      - name: stage Summary
+      - name: Promote Summary
         if: success()
         run: |
           echo "=========================================="
-          echo "✓ Solution stage: SUCCESS"
+          echo "✓ Solution promote: SUCCESS"
           echo "=========================================="
           echo "  ✓ Exported '${{ inputs.source_solution_name }}' from ${{ inputs.source_environment }}"
           echo "  ✓ Imported '${{ inputs.source_solution_name }}' to ${{ inputs.target_environment }}"
@@ -177,10 +177,10 @@ jobs:
         id: branch
         shell: pwsh
         run: |
-          # Always use a persistent per-solution staging branch.
+          # Always use a persistent per-solution promotion branch.
           # The branch is reset to origin/<sync_branch_name> (develop) on every run
           # so the PR diff is minimal and reviewers see only what changed in this stage.
-          $syncBranch = "staging/${{ inputs.target_solution_name }}"
+          $syncBranch = "promote/${{ inputs.target_solution_name }}"
           "sync_branch=$syncBranch" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Sync Solution
@@ -201,25 +201,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $stagingBranch = "${{ steps.branch.outputs.sync_branch }}"
+          $promoteBranch = "${{ steps.branch.outputs.sync_branch }}"
           $baseBranch    = "${{ inputs.sync_branch_name }}"
 
-          # Check whether a PR for this persistent staging branch already exists
+          # Check whether a PR for this persistent promotion branch already exists
           $existingPR = gh pr list `
             --base $baseBranch `
-            --head $stagingBranch `
+            --head $promoteBranch `
             --json number --jq '.[0].number' 2>$null
 
           if ($existingPR) {
-            Write-Host "Staging PR #$existingPR already exists and was updated by the force push."
+            Write-Host "Promotion PR #$existingPR already exists and was updated by the force push."
             Write-Host "PR URL: $(gh pr view $existingPR --json url --jq '.url')"
           } else {
-            $prBody = "Automated sync of ``${{ inputs.target_solution_name }}`` after staging ``${{ inputs.source_solution_name }}`` from ``${{ inputs.source_environment }}`` → ``${{ inputs.target_environment }}``.`n`n> [!NOTE]`n> This is a **draft PR** created by the ALM automation. Before marking it ready for review, ensure all related code PRs (plugins, PCF controls) have been merged into ``$baseBranch``.`n`nRun: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            $prBody = "Automated sync of ``${{ inputs.target_solution_name }}`` after promoting ``${{ inputs.source_solution_name }}`` from ``${{ inputs.source_environment }}`` → ``${{ inputs.target_environment }}``.`n`n> [!NOTE]`n> This is a **draft PR** created by the ALM automation. Before marking it ready for review, ensure all related code PRs (plugins, PCF controls) have been merged into ``$baseBranch``.`n`nRun: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
             $pr = gh pr create `
               --draft `
               --base $baseBranch `
-              --head $stagingBranch `
-              --title "chore(stage): sync ${{ inputs.target_solution_name }} from ${{ inputs.source_environment }} [draft]" `
+              --head $promoteBranch `
+              --title "chore(promote): sync ${{ inputs.target_solution_name }} from ${{ inputs.source_environment }} [draft]" `
               --body $prBody
             Write-Host "Pull request created: $pr"
           }
