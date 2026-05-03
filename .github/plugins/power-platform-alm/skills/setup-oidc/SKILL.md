@@ -50,8 +50,7 @@ Before proceeding, gather what is not already known:
 | 3 | Which environments to configure? | List of slugs: `acme-dev`, `acme-test`, `acme-prod`, etc. |
 | 4 | Dataverse URL for each environment | e.g., `https://org-dev12345.crm.dynamics.com/` |
 | 5 | Do you already have app registration (client) IDs for any of these environments? | If yes, note which ones — skip Step 1 for those |
-| 6 | Do all environments share one app registration, or does each have its own? | One per environment = more isolation; one shared = simpler |
-| 7 | Do you need to hand this off to an admin, or can you run the steps yourself? | If hand-off: generate the Admin Instructions document below |
+| 6 | Do you need to hand this off to an admin, or can you run the steps yourself? | If hand-off: generate the Admin Instructions document below |
 
 ---
 
@@ -76,7 +75,7 @@ The output includes:
 - **Application (Client) ID** — save this; needed for Step 2 and the GitHub Environment variable
 - **Tenant ID** — your Azure AD tenant ID (same for all environments in your tenant)
 
-Repeat `pac admin create-service-principal` for each environment that needs its own service principal. If environments will share one app registration, run it once for any one of them. You only need to run `pac auth create` once.
+Repeat `pac admin create-service-principal` for each environment. Each run creates a unique app registration — you will get a different client ID per environment. You only need to run `pac auth create` once.
 
 > **`pac` not installed?** Run `winget install Microsoft.PowerPlatform.CLI` (Windows) or follow [https://aka.ms/PowerAppsCLI](https://aka.ms/PowerAppsCLI).
 
@@ -91,22 +90,22 @@ This creates the OIDC trust relationship. When a GitHub Actions job runs inside 
 - Logged in: `az login`
 - Owner on the app registration (or Privileged Role Admin in Azure AD)
 
-**Run the helper script from `.platform`:**
+**Run the helper script from `.platform` — once per environment:**
 
 ```powershell
-# If all environments share ONE app registration — list all slugs at once
-.platform/.github/workflows/scripts/Setup-GitHubFederatedCredentials.ps1 `
-    -AppRegistrationId "<client-id>" `
-    -GitHubOrg "<githubOrg>" `
-    -RepositoryName "<repoName>" `
-    -Environments @("<env-slug-1>", "<env-slug-2>", "<env-slug-3>")
-
-# If each environment has its OWN app registration — run once per registration
+# Run once per environment (each has its own app registration from Step 1)
 .platform/.github/workflows/scripts/Setup-GitHubFederatedCredentials.ps1 `
     -AppRegistrationId "<env-1-client-id>" `
     -GitHubOrg "<githubOrg>" `
     -RepositoryName "<repoName>" `
     -Environments @("<env-slug-1>")
+
+.platform/.github/workflows/scripts/Setup-GitHubFederatedCredentials.ps1 `
+    -AppRegistrationId "<env-2-client-id>" `
+    -GitHubOrg "<githubOrg>" `
+    -RepositoryName "<repoName>" `
+    -Environments @("<env-slug-2>")
+# ... etc
 ```
 
 The script:
@@ -236,7 +235,7 @@ az ad app federated-credential create `
     }'
 ```
 
-Run this command once per environment slug. If all environments share one app registration, run it multiple times with the same `--id` but a different `subject` and `name` for each.
+Run this command once per environment slug, using the client ID for that environment's app registration.
 
 Once done, please confirm — I will verify the authentication chain using a test workflow.
 

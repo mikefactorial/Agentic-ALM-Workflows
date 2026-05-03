@@ -267,22 +267,21 @@ winget install Microsoft.AzureCLI   # if not already installed
 az login
 ```
 
-Run the helper script from `.platform`. If **all environments share one app registration**, list all slugs in a single call. If **each environment has its own**, run once per environment:
+Run the helper script from `.platform` once per environment (each environment has its own app registration from Step 5a):
 
 ```powershell
-# Shared app registration — all slugs in one call
-.platform/.github/workflows/scripts/Setup-GitHubFederatedCredentials.ps1 `
-    -AppRegistrationId "<client-id>" `
-    -GitHubOrg "<githubOrg>" `
-    -RepositoryName "<repoName>" `
-    -Environments @("<env-slug-1>", "<env-slug-2>", "<env-slug-3>")
-
-# Per-environment registrations — run once per environment
 .platform/.github/workflows/scripts/Setup-GitHubFederatedCredentials.ps1 `
     -AppRegistrationId "<env-1-client-id>" `
     -GitHubOrg "<githubOrg>" `
     -RepositoryName "<repoName>" `
     -Environments @("<env-slug-1>")
+
+.platform/.github/workflows/scripts/Setup-GitHubFederatedCredentials.ps1 `
+    -AppRegistrationId "<env-2-client-id>" `
+    -GitHubOrg "<githubOrg>" `
+    -RepositoryName "<repoName>" `
+    -Environments @("<env-slug-2>")
+# ... etc
 ```
 
 The script adds a federated credential with subject `repo:<githubOrg>/<repoName>:environment:<env-slug>` for each slug. It skips any that already exist and prints a created / skipped / error summary.
