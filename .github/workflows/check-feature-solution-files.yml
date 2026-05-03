@@ -1,0 +1,45 @@
+name: Check Feature Solution Files
+
+# Callable workflow — blocks PRs that include feature solution files (src/solutions/<name>/)
+# where <name> is not a mainSolution defined in environment-config.json.
+# Feature solution folders are build artifacts for dev-test and must never enter develop or main.
+
+on:
+  workflow_call:
+    inputs:
+      base_ref:
+        description: 'PR base branch ref (e.g. develop)'
+        required: true
+        type: string
+      head_sha:
+        description: 'PR head commit SHA'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  check-feature-solution-files:
+    name: Block feature solution files from develop/main
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+
+      - name: Check for feature solution files
+        shell: pwsh
+        run: >-
+          .platform\.github\workflows\scripts\Check-FeatureSolutionFiles.ps1
+          -BaseBranch "${{ inputs.base_ref }}"
+          -HeadSha "${{ inputs.head_sha }}"
