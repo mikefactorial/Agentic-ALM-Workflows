@@ -36,12 +36,39 @@ Read from `environment-config.json`:
 
 Confirm the chosen environment slug appears in `packageGroups[x].environments` for the selected package. If not, warn the user before proceeding.
 
-### 2. Execute via GitHub Actions
+### 2. Trigger via GitHub Actions
 
-1. **Actions** → **Deploy Package** → **Run workflow**
-2. Select environment: `{environment}`
-3. Select package: `{package_group}`
-4. Optionally enter release tag (blank = latest)
+> **Do NOT run `pac package deploy` locally.** Developers typically do not have direct access to test or production Dataverse environments. All outer-loop deployments must go through the GitHub Actions workflow, which uses OIDC federated credentials configured for those environments.
+
+Read `githubOrg` and `repoName` from `environment-config.json`, then trigger the workflow:
+
+```powershell
+gh workflow run deploy-package.yml `
+    --repo "{githubOrg}/{repoName}" `
+    --field environment="{environment}" `
+    --field package="{package_group}" `
+    --field release_tag="{release_tag}"
+```
+
+If deploying the latest release, omit `--field release_tag` or pass an empty string.
+
+After triggering, get the run URL so the user can monitor progress:
+
+```powershell
+Start-Sleep -Seconds 3
+$run = gh run list `
+    --repo "{githubOrg}/{repoName}" `
+    --workflow deploy-package.yml `
+    --limit 1 `
+    --json databaseId,url,status | ConvertFrom-Json | Select-Object -First 1
+
+Write-Host "Deployment triggered. Monitor progress:"
+Write-Host "  $($run.url)"
+```
+
+Tell the user:
+> "The deployment has been triggered. You can monitor its progress here: {run.url}
+> If the environment has an approval gate, reviewers will be notified to approve before the deploy proceeds."
 
 ### 3. What Happens
 
