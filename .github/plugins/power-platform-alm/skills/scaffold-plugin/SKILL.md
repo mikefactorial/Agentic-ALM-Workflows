@@ -162,10 +162,16 @@ namespace {Publisher}.Plugins.{SolutionAreaName}.{Name}
 
 Use `solutionAreas[x].pluginsSln` from `environment-config.json`:
 
+> **Important — always use `.sln` format, not `.slnx`.** The `nuget.exe restore` command used by `Build-Plugins.ps1` does not support the newer `.slnx` format. .NET SDK 9+ defaults to `.slnx` when creating a new solution, so you must pass `--format sln` explicitly.
+
 ```powershell
-# cd to the pluginsPath directory, then add the project to the .sln
 cd {solutionAreas[x].pluginsPath}
-dotnet sln {SolutionFileName} add {Publisher}.Plugins.{SolutionAreaName}.{Name}/{Publisher}.Plugins.{SolutionAreaName}.{Name}.csproj
+
+# If the .sln file does not exist yet, create it first:
+dotnet new sln --name {SolutionFileName} --format sln
+
+# Then add the project
+dotnet sln {SolutionFileName}.sln add {Publisher}.Plugins.{SolutionAreaName}.{Name}/{Publisher}.Plugins.{SolutionAreaName}.{Name}.csproj
 ```
 
 ### 5. Add ProjectReference to .cdsproj
