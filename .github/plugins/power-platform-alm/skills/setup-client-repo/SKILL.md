@@ -298,16 +298,17 @@ Do this for **every** environment — inner-loop environments (dev, integration)
 **Step 5a — Create the service principal** *(Power Platform Admin required)*
 
 ```powershell
-# Authenticate to the target environment
-pac auth create --interactive --environment <dataverse-env-url>
+# Authenticate once — pac auth is per-tenant, not per-environment
+pac auth create --environment <any-dataverse-env-url>
 
 # Create an Azure AD app registration and register it as a Dataverse App User
+# Repeat for each environment that needs its own service principal
 pac admin create-service-principal --environment <dataverse-env-url>
 ```
 
-Note the **Application (Client) ID** and **Tenant ID** from the output — you need these for Steps 5b, 5c, and the repo-level `AZURE_TENANT_ID` variable. Repeat for each environment that needs its own service principal.
+Note the **Application (Client) ID** and **Tenant ID** from the output — you need these for Steps 5b, 5c, and the repo-level `AZURE_TENANT_ID` variable. Repeat `pac admin create-service-principal` for each environment that needs its own service principal.
 
-> **Not a Power Platform Admin?** Share the command above with your tenant admin. They only need `pac` installed (`winget install Microsoft.PowerPlatform.CLI`) and must authenticate with `pac auth create --interactive --environment <url>` before running the create command.
+> **Not a Power Platform Admin?** Share the command above with your tenant admin. They only need `pac` installed (`winget install Microsoft.PowerPlatform.CLI`) and must authenticate with `pac auth create --environment <url>` before running the create command.
 
 **Step 5b — Add federated credentials** *(Azure AD App Owner required)*
 

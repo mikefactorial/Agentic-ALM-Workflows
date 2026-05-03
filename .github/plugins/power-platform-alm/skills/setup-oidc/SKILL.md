@@ -62,18 +62,21 @@ Before proceeding, gather what is not already known:
 Run as a **Power Platform Admin** — one command creates the Azure AD app registration and registers it as a Dataverse App User in the target environment:
 
 ```powershell
-# Authenticate to the environment first
-pac auth create --interactive --environment <dataverse-env-url>
+# Authenticate once — pac auth is per-tenant, not per-environment.
+# Any environment URL in the target tenant works here.
+pac auth create --environment <any-dataverse-env-url>
 
-# Create the service principal and Dataverse App User
-pac admin create-service-principal --environment <dataverse-env-url>
+# Create the service principal and Dataverse App User — repeat for each environment
+pac admin create-service-principal --environment <dataverse-env-url-1>
+pac admin create-service-principal --environment <dataverse-env-url-2>
+# ... etc
 ```
 
 The output includes:
 - **Application (Client) ID** — save this; needed for Step 2 and the GitHub Environment variable
 - **Tenant ID** — your Azure AD tenant ID (same for all environments in your tenant)
 
-Repeat for each environment that needs its own service principal. If environments will share one, run it once for any one of them.
+Repeat `pac admin create-service-principal` for each environment that needs its own service principal. If environments will share one app registration, run it once for any one of them. You only need to run `pac auth create` once.
 
 > **`pac` not installed?** Run `winget install Microsoft.PowerPlatform.CLI` (Windows) or follow [https://aka.ms/PowerAppsCLI](https://aka.ms/PowerAppsCLI).
 
@@ -196,11 +199,14 @@ For each environment in the table above, run the following in PowerShell:
 # Install pac CLI if not already installed
 winget install Microsoft.PowerPlatform.CLI
 
-# Authenticate (repeat for each environment URL)
-pac auth create --interactive --environment <dataverse-env-url>
+# Authenticate once — pac auth is per-tenant, not per-environment.
+# Any environment URL in the target tenant works here.
+pac auth create --environment <any-dataverse-env-url>
 
-# Create the service principal and Dataverse App User
-pac admin create-service-principal --environment <dataverse-env-url>
+# Create the service principal and Dataverse App User — repeat for each environment
+pac admin create-service-principal --environment <dataverse-env-url-1>
+pac admin create-service-principal --environment <dataverse-env-url-2>
+# ... etc
 ```
 
 **Please send me** the **Application (Client) ID** and **Tenant ID** printed in the output for each environment. I will use these to complete the GitHub setup.
