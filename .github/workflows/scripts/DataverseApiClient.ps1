@@ -210,8 +210,7 @@ class DataverseApiClient {
                     Where-Object {
                         $_.credential_type -eq "AccessToken" -and
                         $_.secret -and
-                        ($_.target -match [regex]::Escape($this.DataverseHost) -or
-                         $_.target -match [regex]::Escape("crm.dynamics.com")) -and
+                        $_.target -match [regex]::Escape($this.DataverseHost) -and
                         ([long]$_.expires_on - 300) -gt $nowUnix
                     } |
                     Sort-Object { [long]$_.expires_on } -Descending |
