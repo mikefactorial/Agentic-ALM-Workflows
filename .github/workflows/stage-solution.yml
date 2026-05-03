@@ -40,7 +40,7 @@ on:
         type: string
         default: 'chore: automated solution sync after stage'
       sync_branch_name:
-        description: 'Branch name for solution sync (if sync is enabled)'
+        description: 'Base branch for the staging PR and direct commits (default: develop)'
         required: false
         type: string
         default: 'develop'
@@ -177,11 +177,10 @@ jobs:
         id: branch
         shell: pwsh
         run: |
-          if ('${{ inputs.sync_create_pr }}' -eq 'true') {
-            $syncBranch = "sync/${{ inputs.target_solution_name }}-${{ github.run_number }}"
-          } else {
-            $syncBranch = "${{ inputs.sync_branch_name }}"
-          }
+          # Always use a persistent per-solution staging branch.
+          # The branch is reset to origin/<sync_branch_name> (develop) on every run
+          # so the PR diff is minimal and reviewers see only what changed in this stage.
+          $syncBranch = "staging/${{ inputs.target_solution_name }}"
           "sync_branch=$syncBranch" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Sync Solution
@@ -192,6 +191,7 @@ jobs:
             -environmentUrl "${{ vars.DATAVERSE_URL }}" `
             -commitMessage "${{ inputs.sync_commit_message }}" `
             -branchName "${{ steps.branch.outputs.sync_branch }}" `
+            -baseBranch "${{ inputs.sync_branch_name }}" `
             -tenantId "${{ vars.AZURE_TENANT_ID }}" `
             -clientId "${{ vars.DATAVERSE_CLIENT_ID }}"
 
@@ -201,12 +201,28 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $pr = gh pr create `
-            --base "${{ inputs.sync_branch_name }}" `
-            --head "${{ steps.branch.outputs.sync_branch }}" `
-            --title "chore(stage): sync ${{ inputs.target_solution_name }} after stage from ${{ inputs.source_environment }}" `
-            --body "Automated sync after Staging ``${{ inputs.source_solution_name }}`` from ``${{ inputs.source_environment }}`` → ``${{ inputs.target_environment }}``.`n`nRun: #${{ github.run_number }}"
-          Write-Host "Pull request created: $pr"
+          $stagingBranch = "${{ steps.branch.outputs.sync_branch }}"
+          $baseBranch    = "${{ inputs.sync_branch_name }}"
+
+          # Check whether a PR for this persistent staging branch already exists
+          $existingPR = gh pr list `
+            --base $baseBranch `
+            --head $stagingBranch `
+            --json number --jq '.[0].number' 2>$null
+
+          if ($existingPR) {
+            Write-Host "Staging PR #$existingPR already exists and was updated by the force push."
+            Write-Host "PR URL: $(gh pr view $existingPR --json url --jq '.url')"
+          } else {
+            $prBody = "Automated sync of ``${{ inputs.target_solution_name }}`` after staging ``${{ inputs.source_solution_name }}`` from ``${{ inputs.source_environment }}`` → ``${{ inputs.target_environment }}``.`n`n> [!NOTE]`n> This is a **draft PR** created by the ALM automation. Before marking it ready for review, ensure all related code PRs (plugins, PCF controls) have been merged into ``$baseBranch``.`n`nRun: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            $pr = gh pr create `
+              --draft `
+              --base $baseBranch `
+              --head $stagingBranch `
+              --title "chore(stage): sync ${{ inputs.target_solution_name }} from ${{ inputs.source_environment }} [draft]" `
+              --body $prBody
+            Write-Host "Pull request created: $pr"
+          }
 
       - name: Sync Summary
         if: success()

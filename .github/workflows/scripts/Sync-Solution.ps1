@@ -22,6 +22,11 @@
     
 .PARAMETER branchName
     The Git branch name to commit to (default: current branch)
+
+.PARAMETER baseBranch
+    When set, the target branch is reset to origin/<baseBranch> HEAD before committing.
+    Use this for persistent staging branches that must always start clean from a base
+    branch (e.g. develop). A force push is used when this parameter is supplied.
     
 .PARAMETER skipGitCommit
     Skip Git operations - only sync/clone the solution without committing
@@ -82,6 +87,9 @@ param(
     
     [Parameter(Mandatory=$false)]
     [string]$branchName,
+
+    [Parameter(Mandatory=$false)]
+    [string]$baseBranch,
     
     [Parameter(Mandatory=$false)]
     [switch]$skipGitCommit,
@@ -129,6 +137,9 @@ if (-not $skipGitCommit) {
     Write-Host "Git Commit: Enabled"
     if ($branchName) {
         Write-Host "Branch: $branchName"
+    }
+    if ($baseBranch) {
+        Write-Host "Base Branch (reset origin): $baseBranch"
     }
 } else {
     Write-Host "Git Commit: Skipped"
@@ -215,7 +226,15 @@ if ($performGitOperations) {
                 Write-Host "Local branch exists, checking it out..." -ForegroundColor Gray
                 git checkout $branchName 2>&1 | Out-Null
                 
-                if ($remoteBranchExists) {
+                if ($baseBranch) {
+                    # Staging branch mode: always reset to origin/<baseBranch> so the diff is minimal and clean
+                    Write-Host "Resetting to origin/$baseBranch (base branch reset)..." -ForegroundColor Cyan
+                    git reset --hard "origin/$baseBranch" 2>&1 | Out-Null
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Failed to reset branch to origin/$baseBranch"
+                    }
+                    Write-Host "✓ Branch reset to origin/$baseBranch" -ForegroundColor Green
+                } elseif ($remoteBranchExists) {
                     Write-Host "Resetting to match origin/$branchName..." -ForegroundColor Gray
                     git reset --hard "origin/$branchName" 2>&1 | Out-Null
                     if ($LASTEXITCODE -ne 0) {
@@ -224,11 +243,22 @@ if ($performGitOperations) {
                     Write-Host "✓ Branch synchronized with remote" -ForegroundColor Green
                 }
             } elseif ($remoteBranchExists) {
-                Write-Host "Remote branch exists, creating local branch from origin/$branchName..." -ForegroundColor Gray
-                git checkout -b $branchName --track origin/$branchName 2>&1
+                if ($baseBranch) {
+                    # First run where remote staging branch doesn't yet exist: create from base branch
+                    Write-Host "Creating staging branch from origin/$baseBranch..." -ForegroundColor Cyan
+                    git checkout -b $branchName "origin/$baseBranch" 2>&1
+                } else {
+                    Write-Host "Remote branch exists, creating local branch from origin/$branchName..." -ForegroundColor Gray
+                    git checkout -b $branchName --track origin/$branchName 2>&1
+                }
             } else {
-                Write-Host "Branch doesn't exist locally or remotely, creating new branch..." -ForegroundColor Gray
-                git checkout -b $branchName 2>&1
+                if ($baseBranch) {
+                    Write-Host "Creating new staging branch from origin/$baseBranch..." -ForegroundColor Cyan
+                    git checkout -b $branchName "origin/$baseBranch" 2>&1
+                } else {
+                    Write-Host "Branch doesn't exist locally or remotely, creating new branch..." -ForegroundColor Gray
+                    git checkout -b $branchName 2>&1
+                }
             }
         } else {
             # No remote, just check/create local branch
@@ -845,7 +875,12 @@ if ($performGitOperations) {
                     
                     Write-Host ""
                     Write-Host "Pushing to remote..." -ForegroundColor Cyan
-                    git push origin $pushBranch 2>&1
+                    if ($baseBranch) {
+                        # Staging branch was reset to base branch HEAD — force push is required
+                        git push origin $pushBranch --force-with-lease 2>&1
+                    } else {
+                        git push origin $pushBranch 2>&1
+                    }
                     
                     if ($LASTEXITCODE -eq 0) {
                         Write-Host "✓ Pushed to origin/$pushBranch" -ForegroundColor Green
