@@ -58,9 +58,7 @@ feature branch ─────────────────────�
 
 Read from `environment-config.json`: for each solution area, `solutionAreas[x].devEnv` is the source slug and `solutionAreas[x].integrationEnv` is the target slug. Resolve both URLs from `innerLoopEnvironments[].url`.
 
-> **Optional integration environment**: Before running promote, check whether `solutionAreas[x].integrationEnv` resolves to a real URL in `innerLoopEnvironments[]`. If the URL value is a `{{PLACEHOLDER}}` or the slug maps to nothing, this repo was configured without a dedicated integration environment. In that case, ask the user:
-> *"Your repo doesn't have an integration environment configured. Which environment should be used as the promote target? (e.g. your test or UAT environment slug)"*
-> Use the user-provided slug and resolve its URL from `environments[]` instead. If the user-provided URL is also a placeholder, fail with a clear message explaining the environment is not yet configured in `environment-config.json`.
+> **Optional integration environment**: Before running promote, check whether `solutionAreas[x].integrationEnv` resolves to a real URL in `innerLoopEnvironments[]`. If the URL value is a `{{PLACEHOLDER}}` or the slug maps to nothing, this repo was configured without a dedicated integration environment. In that case, **use the dev environment as both source and target** — set `{integrationEnvUrl}` to the same URL as `{devEnvUrl}`. The promote will export from dev, import back into dev, and copy components within dev. This is the correct default for single-environment inner-loop setups.
 
 ---
 
@@ -167,6 +165,8 @@ Merge the sync PR once reviewed. After merge, `develop` reflects the promoted co
 ### Step 3 — Create the Clean Code PR
 
 > **Required for any feature that includes PCF controls or plugins, or that changes deployment settings or config data.** This is not optional — skipping it leaves code-first changes permanently orphaned on the feature branch.
+
+> **Do NOT open a PR directly from the feature branch to `develop`.** The feature branch contains `src/solutions/{featureSolution}/` and its settings template, which are build artifacts for dev-test and must never enter `develop` or `main`. The `check-feature-solution-files.yml` PR check will block any PR that includes them. Always use `Create-FeatureCodePR.ps1` — it strips those folders automatically before opening the PR.
 
 Run the automated code PR script from the repo root:
 
