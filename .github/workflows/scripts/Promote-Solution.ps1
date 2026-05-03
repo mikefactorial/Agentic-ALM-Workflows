@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    stage a solution from a source environment to a target environment
+    Promote a solution from a source environment to a target environment
     
 .DESCRIPTION
     Exports a solution as unmanaged from a source environment, imports it into a target environment,
@@ -37,7 +37,7 @@
     The Azure AD application (client) ID (for federated auth). Leave blank for interactive authentication.
     
 .EXAMPLE
-    # Local testing - Full stage with interactive auth
+    # Local testing - Full promote with interactive auth
     .\Promote-Solution.ps1 `
         -Phase All `
         -sourceSolutionName "MyFeatureSolution" `
@@ -150,7 +150,7 @@ if ($Phase -eq "Export" -or $Phase -eq "All") {
 }
 
 Write-Host "=========================================="
-Write-Host "Power Platform Solution stage - $Phase Phase"
+Write-Host "Power Platform Solution Promote - $Phase Phase"
 Write-Host "=========================================="
 Write-Host "Source Solution: $sourceSolutionName"
 if ($Phase -ne "Export") {
@@ -329,7 +329,7 @@ try {
 catch {
     Write-Host ""
     Write-Host "==========================================" -ForegroundColor Red
-    Write-Host "✗ Solution stage Failed" -ForegroundColor Red
+    Write-Host "✗ Solution Promote Failed" -ForegroundColor Red
     Write-Host "==========================================" -ForegroundColor Red
     Write-Host ""
     Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red

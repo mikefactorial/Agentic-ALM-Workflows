@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Validates that a feature solution is ready for stage: all environment variables
+    Validates that a feature solution is ready for promotion: all environment variables
     and connection references have values for every relevant deployment environment.
 
 .DESCRIPTION
@@ -13,13 +13,13 @@
     Environments that would deploy the main solution are determined from
     environment-config.json by finding package groups that include the main solution.
 
-    Run this BEFORE triggering the stage workflow. Fix any reported gaps first.
+    Run this BEFORE triggering the promotion workflow. Fix any reported gaps first.
 
 .PARAMETER FeatureSolutionName
     The unique name of the feature solution (e.g., AB34567_StatusBadge).
 
 .PARAMETER MainSolutionName
-    The main solution this feature will be staged into (e.g., slp_LabSci).
+    The main solution this feature will be promoted into (e.g., slp_LabSci).
     Used to determine which environments need values populated.
 
 .PARAMETER SettingsRoot
@@ -71,7 +71,7 @@ $relevantEnvs = $config.environments
 # ─── Header ───────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  Pre-Stage Validation" -ForegroundColor Cyan
+Write-Host "  Pre-Promote Validation" -ForegroundColor Cyan
 Write-Host "  Feature solution : $FeatureSolutionName" -ForegroundColor Cyan
 Write-Host "  Target solution  : $MainSolutionName" -ForegroundColor Cyan
 Write-Host "  Environments     : $($relevantEnvs -join ', ')" -ForegroundColor Cyan
@@ -161,7 +161,7 @@ if ($issues.Count -gt 0) {
     Write-Host ""
     $issues | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
     Write-Host ""
-    Write-Host "Fix these before triggering the stage workflow:" -ForegroundColor Yellow
+    Write-Host "Fix these before triggering the promote workflow:" -ForegroundColor Yellow
     Write-Host "  - EV values     → deployments/settings/environment-variables.json" -ForegroundColor Yellow
     Write-Host "  - Connection IDs → deployments/settings/connection-mappings.json" -ForegroundColor Yellow
     Write-Host ""
@@ -171,6 +171,6 @@ if ($issues.Count -gt 0) {
 
 Write-Host "==========================================" -ForegroundColor Green
 Write-Host "  VALIDATION PASSED ($passed check(s))" -ForegroundColor Green
-Write-Host "  Feature is ready to stage." -ForegroundColor Green
+Write-Host "  Feature is ready to promote." -ForegroundColor Green
 Write-Host "==========================================" -ForegroundColor Green
 Write-Host ""

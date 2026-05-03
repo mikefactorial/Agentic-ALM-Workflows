@@ -69,7 +69,7 @@ Scripts live in `.github/workflows/scripts/` and are used both by callable workf
 | `Initialize-FeatureSolution.ps1` | Create a feature solution in Dataverse and set it as preferred |
 | `Register-Plugin.ps1` | Register or update a plugin assembly and steps in Dataverse |
 | `Setup-GitHubFederatedCredentials.ps1` | Add OIDC federated credentials to an Azure AD app registration for one or more GitHub Environments (requires Azure CLI) |
-| `Validate-FeaturePromotion.ps1` | Pre-stage validation — check environment variables and connection references |
+| `Validate-FeaturePromotion.ps1` | Pre-promote validation — check environment variables and connection references |
 | `Validate-DeploymentSettings.ps1` | Validate deployment settings files before deploy |
 | `Validate-EnvironmentReadiness.ps1` | Confirm a Dataverse environment is reachable and configured |
 | `Create-FeatureCodePR.ps1` | Open a PR for code-first solution changes |

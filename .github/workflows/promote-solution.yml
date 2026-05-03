@@ -179,7 +179,7 @@ jobs:
         run: |
           # Always use a persistent per-solution promotion branch.
           # The branch is reset to origin/<sync_branch_name> (develop) on every run
-          # so the PR diff is minimal and reviewers see only what changed in this stage.
+          # so the PR diff is minimal and reviewers see only what changed in this promotion run.
           $syncBranch = "promote/${{ inputs.target_solution_name }}"
           "sync_branch=$syncBranch" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
