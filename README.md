@@ -46,7 +46,7 @@ The Azure AD app registration must be added as a Dataverse App User and have a f
 | `sync-solution.yml` | Export and unpack a solution from a Dataverse environment to the repo |
 | `build-deploy-solution.yml` | Build solution from branch and deploy to a target environment |
 | `sync-build-deploy-solution.yml` | Sync from environment, build, and deploy in one pass |
-| `promote-solution.yml` | Stage solution components from dev to integration (optional — inner loop can also run fully locally) |
+| `promote-solution.yml` | Promote solution components from dev to integration (optional — inner loop can also run fully locally) |
 | `create-release-package.yml` | Build all packages and create a versioned GitHub Release |
 | `deploy-package.yml` | Outer-loop package deployment via `pac package deploy` |
 | `validate-pull-request.yml` | Validate PR changes — detect changed components, build, run solution checker |

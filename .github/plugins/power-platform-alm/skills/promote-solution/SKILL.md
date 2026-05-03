@@ -3,7 +3,7 @@ name: promote-solution
 description: 'Promote solution components from a dev environment to integration. Use when: promoting a feature from dev to integration, completing inner-loop development, handing off a validated feature, moving components from a feature solution to the main solution.'
 ---
 
-# Promote Solution (Stage to Integration)
+# Promote Solution (Promote to Integration)
 
 Move a validated feature from dev/dev-test into the dev integration environment and the `develop` branch. This is the final inner-loop step before a release.
 
