@@ -58,7 +58,7 @@ feature branch ─────────────────────�
 
 Read from `environment-config.json`: for each solution area, `solutionAreas[x].devEnv` is the source slug and `solutionAreas[x].integrationEnv` is the target slug. Resolve both URLs from `innerLoopEnvironments[].url`.
 
-> **Optional integration environment**: Before running stage, check whether `solutionAreas[x].integrationEnv` resolves to a real URL in `innerLoopEnvironments[]`. If the URL value is a `{{PLACEHOLDER}}` or the slug maps to nothing, this repo was configured without a dedicated integration environment. In that case, ask the user:
+> **Optional integration environment**: Before running promote, check whether `solutionAreas[x].integrationEnv` resolves to a real URL in `innerLoopEnvironments[]`. If the URL value is a `{{PLACEHOLDER}}` or the slug maps to nothing, this repo was configured without a dedicated integration environment. In that case, ask the user:
 > *"Your repo doesn't have an integration environment configured. Which environment should be used as the promote target? (e.g. your test or UAT environment slug)"*
 > Use the user-provided slug and resolve its URL from `environments[]` instead. If the user-provided URL is also a placeholder, fail with a clear message explaining the environment is not yet configured in `environment-config.json`.
 
@@ -111,7 +111,7 @@ Fix all `✗` errors before proceeding. Commit any changes to the feature branch
 
 > **EV type rules**: Number → decimal string (`"42"`), Boolean → `"true"`/`"false"`, JSON → valid JSON string, String → any value
 
-#### 2b. Execute Stage (local)
+#### 2b. Execute Promote (local)
 
 Run all three phases from the repo root:
 
@@ -152,9 +152,9 @@ gh pr create `
 
 > **Auth tip**: If you have separate `pac` auth profiles for dev and integration, use `pac auth select` to switch between them before each script call, or pass `-tenantId` / `-clientId` explicitly for non-interactive runs.
 
-#### 2c. Verify Stage
+#### 2c. Verify Promote
 
-After stage + sync PR is open:
+After promote + sync PR is open:
 - The main solution in the integration environment contains the promoted components
 - The sync branch (`sync/{mainSolution}-{tag}`) has updated `src/solutions/{mainSolution}/` and `deployments/settings/templates/{mainSolution}_template.json`
 - The PR is open against `develop` and ready for review/merge
@@ -162,7 +162,7 @@ After stage + sync PR is open:
 
 Merge the sync PR once reviewed. After merge, `develop` reflects the promoted components.
 
-> **If this is a mixed feature (has PCF controls or plugins): do not stop here. Proceed immediately to Step 3.** Stage only moved solution metadata. The code-first components are still only on the feature branch.
+> **If this is a mixed feature (has PCF controls or plugins): do not stop here. Proceed immediately to Step 3.** Promote only moved solution metadata. The code-first components are still only on the feature branch.
 
 ### Step 3 — Create the Clean Code PR
 
