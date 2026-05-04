@@ -113,9 +113,18 @@ jobs:
         run: |
           $config = Get-Content 'deployments/settings/environment-config.json' -Raw | ConvertFrom-Json
           $slnPaths = $config.solutionAreas | Where-Object { $_.pluginsSln } | Select-Object -ExpandProperty pluginsSln
+          if (-not $slnPaths) {
+            Write-Host "No plugin solutions defined in environment-config.json — skipping NuGet restore."
+            exit 0
+          }
           foreach ($sln in $slnPaths) {
+            $localSln = $sln -replace '/', '\'
+            if (-not (Test-Path $localSln)) {
+              Write-Warning "Plugin solution not found at '$localSln' — skipping restore. Run 'scaffold-plugin' to create the plugin project first."
+              continue
+            }
             Write-Host "Restoring $sln..."
-            nuget restore ($sln -replace '/', '\')
+            nuget restore $localSln
           }
 
       - name: Build PCF component dependencies

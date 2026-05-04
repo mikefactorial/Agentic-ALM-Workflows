@@ -216,6 +216,33 @@ No renaming of any files or folders is needed — the package project uses a fix
 
 ---
 
+### 3b. Initialize Solution Structures Locally
+
+> **This step is required before committing to main.** The `ProjectReference` added in Step 3 expects a `.cdsproj` file to exist at build time. Without it, the release package build fails immediately after the first commit. This step creates the local solution scaffolding using `pac solution init` — no Dataverse connection is needed. The full solution metadata sync from Dataverse happens in Step 10 after OIDC is configured.
+
+For each solution area, run from the **repo root**:
+
+```powershell
+# Repeat for each solution area — substitute {mainSolution}, {publisher}, {solutionPrefix}
+$solutionDir = "src/solutions/{mainSolution}"
+New-Item -ItemType Directory -Path $solutionDir -Force | Out-Null
+Push-Location $solutionDir
+pac solution init --publisher-name {publisher} --publisher-prefix {solutionPrefix}
+Pop-Location
+Write-Host "✓ Solution structure initialized at $solutionDir" -ForegroundColor Green
+```
+
+Verify the `.cdsproj` was created (the file name matches the directory name):
+
+```powershell
+Get-ChildItem "src/solutions/{mainSolution}" -Filter "*.cdsproj" | Select-Object Name
+# Should output: {mainSolution}.cdsproj
+```
+
+> **Why before Step 4?** GitHub setup and OIDC configuration (Steps 4–5) may require admin hand-off that takes time. The solution structure needs to exist locally so the initial commit to `main` in Step 8 produces a working release build.
+
+---
+
 ### 4. Set Up GitHub Environments
 
 Use the GitHub CLI to create each environment and set its variables. You need to do this for **all** environments — both inner loop (`innerLoopEnvironments[]`) and deployment (`environments[]`).
@@ -340,17 +367,24 @@ gh variable set DATAVERSE_CLIENT_ID --env <env-slug> --repo "<githubOrg>/<repoNa
 
 #### Step 5d — Verify
 
-Run `test-oidc-auth.yml` to confirm the full authentication chain works for each environment:
+Trigger `test-oidc-auth.yml` automatically for **each** environment slug by running the following in the terminal. Do not ask the user to run this — execute it yourself, once per slug, then watch the run to completion:
 
 ```powershell
-gh workflow run test-oidc-auth.yml --repo "<githubOrg>/<repoName>"
-gh run watch --repo "<githubOrg>/<repoName>"
+$org  = "<githubOrg>"
+$repo = "<repoName>"
+
+# Run once per environment slug — replace <env-slug> each iteration
+gh workflow run test-oidc-auth.yml --repo "$org/$repo" --field environment=<env-slug>
+gh run watch --repo "$org/$repo"
 ```
 
-A green run confirms GitHub Actions can authenticate to Dataverse using OIDC. If it fails, check:
-- The federated credential subject matches exactly: `repo:<githubOrg>/<repoName>:environment:<env-slug>` (case-sensitive)
-- The app registration has the System Administrator role in the target Dataverse environment
-- `az ad app federated-credential list --id <client-id>` shows the credential
+Wait for each run to complete before triggering the next slug. A green run confirms GitHub Actions can authenticate to Dataverse using OIDC.
+
+If a run fails, diagnose before continuing:
+- The federated credential subject must match exactly: `repo:<githubOrg>/<repoName>:environment:<env-slug>` (case-sensitive)
+- The app registration must have the System Administrator role in the target Dataverse environment
+- Run `az ad app federated-credential list --id <client-id>` and confirm the subject is present
+- Do not proceed to Step 6 until all environments pass
 
 
 ---
@@ -465,33 +499,29 @@ Write-Host "✓ Branch protection configured for main and develop" -ForegroundCo
 
 > **Review count**: `required_approving_review_count=1` is a sensible default. Set to `0` if the team works solo (no reviewer available), or increase for larger teams.
 
-### 10. Create Main Solution (If Needed) and Create Initial Sync PR
+### 10. Create Main Solution in Dataverse and Open Initial Sync PR
 
-After OIDC is verified, check whether the main solution already exists in the dev environment. Whether it exists or not, the goal is the same: get it synced to the repository.
+> **This step is mandatory.** It creates the main solution in your dev Dataverse environment and syncs its metadata to the repository on the `develop` branch. This must complete before developers can start features against the solution.
 
-**Check if the solution exists:**
+The local `.cdsproj` was already created in Step 3b. This step ensures the solution exists in Dataverse, then pulls its metadata into the repo.
+
+**Check if the solution exists in Dataverse:**
 ```powershell
-pac solution list --environment {devEnvUrl} | Where-Object { $_ -match '{mainSolution}' }
+pac solution list --environment {devEnvUrl} | Select-String '{mainSolution}'
 ```
 
-If the solution **is not found**, create it programmatically using pac:
+If the solution **is not found** in that output, create it in Dataverse now:
 ```powershell
-# Create the solution directory and initialize it locally
+# The local structure (from Step 3b) is already in place — just pack and import it
 $solutionDir = "src/solutions/{mainSolution}"
-New-Item -ItemType Directory -Path $solutionDir -Force | Out-Null
-Push-Location $solutionDir
-pac solution init --publisher-name {publisher} --publisher-prefix {solutionPrefix}
-Pop-Location
-
-# Pack and import the empty solution into the dev environment
 $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) "{mainSolution}.zip"
 pac solution pack --zipfile $tempZip --folder "$solutionDir/src" --packagetype Unmanaged --errorlevel Warning
 pac solution import --path $tempZip --environment {devEnvUrl} --activate-plugins --publish-changes
 Remove-Item $tempZip -Force -ErrorAction SilentlyContinue
-Write-Host "✓ Solution '{mainSolution}' created in dev environment" -ForegroundColor Green
+Write-Host "✓ Solution '{mainSolution}' imported into dev environment" -ForegroundColor Green
 ```
 
-Once the solution exists (either pre-existing or just created), sync it and open the initial PR:
+Once the solution exists in Dataverse (either pre-existing or just imported), sync it and open the initial PR:
 
 ```powershell
 $syncBranch = "sync/{mainSolution}-initial"

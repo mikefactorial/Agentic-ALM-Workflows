@@ -156,18 +156,24 @@ gh variable set AZURE_TENANT_ID --repo "$org/$repo" --body "$tenantId"
 
 ## Step 4 — Verify
 
-Trigger the `test-oidc-auth.yml` workflow for each environment:
+Trigger `test-oidc-auth.yml` automatically for **each** environment slug. Do not ask the user to run this — execute it in the terminal yourself, once per slug, then watch the run to completion:
 
 ```powershell
-gh workflow run test-oidc-auth.yml --repo "$org/$repo"
+$org  = "<githubOrg>"
+$repo = "<repoName>"
+
+# Run once per environment slug — replace <env-slug> each iteration
+gh workflow run test-oidc-auth.yml --repo "$org/$repo" --field environment=<env-slug>
 gh run watch --repo "$org/$repo"
 ```
 
-A green run confirms the full auth chain works. If it fails, check:
-- The federated credential subject matches exactly: `repo:<org>/<repo>:environment:<env-slug>` (case-sensitive)
-- The GitHub Environment slug in the workflow matches the slug in the credential
-- The app registration has not been deleted or its client ID changed
-- `az ad app federated-credential list --id <client-id>` shows the credential
+Wait for each run to complete before triggering the next slug. A green run confirms the full auth chain works.
+
+If a run fails, diagnose before continuing:
+- The federated credential subject must match exactly: `repo:<org>/<repo>:environment:<env-slug>` (case-sensitive)
+- The GitHub Environment slug in the workflow must match the slug in the credential
+- The app registration must not have been deleted or its client ID changed
+- Run `az ad app federated-credential list --id <client-id>` and confirm the subject is present
 
 ---
 
