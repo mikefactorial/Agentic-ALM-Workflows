@@ -118,7 +118,7 @@ Gather these before running the GitHub environment setup commands in Step 4.
 
 ## Procedure
 
-> **Execute all steps sequentially without pausing to ask "shall I continue?" between steps.** Only stop if a step fails, a required value is missing, or the user explicitly asks to pause. When an async operation (e.g., `gh run watch`) completes successfully, proceed immediately to the next step.
+> **Execute all 10 steps sequentially without pausing to ask "shall I continue?" between steps.** Only stop if a step fails, a required value is missing, or the user explicitly asks to pause. When an async operation (e.g., `gh run watch`) completes successfully, proceed immediately to the next step. **Do not write a summary or declare setup complete until Step 10 is finished and the initial sync PR has been created and shared with the user.**
 
 ### 1. Fill in `environment-config.json`
 
@@ -412,9 +412,6 @@ $tenantId = (pac auth who | Where-Object { $_ -match '^\s*Tenant Id:' } |
 gh variable set AZURE_TENANT_ID --repo "$org/$repo" --body "$tenantId"
 
 # Default environment(s) targeted by automatic deploys on push to main
-# Derive from environments[]: use the test-tier slug (e.g. acme-test)
-gh variable set DEPLOYMENT_ENVIRONMENTS --repo "$org/$repo" --body "<test-slug>"
-
 # Integration environment used for PR validation builds
 # Derive from solutionAreas[].integrationEnv in environment-config.json
 gh variable set PR_VALIDATION_INTEGRATION_ENV --repo "$org/$repo" --body "<integration-slug>"
@@ -464,6 +461,8 @@ if (-not $developExists) {
 }
 ```
 
+> **Setup is NOT complete yet. Continue immediately to Step 9 — do not summarize or conclude.**
+
 ---
 
 ### 9. Set Up Branch Protection
@@ -496,6 +495,8 @@ gh api --method PUT /repos/$org/$repo/branches/develop/protection `
 
 Write-Host "✓ Branch protection configured for main and develop" -ForegroundColor Green
 ```
+
+> **Setup is NOT complete yet. Continue immediately to Step 10 — do not summarize or conclude.**
 
 > **Source branch enforcement for `main`**: The `check-source-branch.yml` workflow enforces that PRs to `main` only come from `develop` or `hotfix/*`. The GitHub API does not support branch name pattern restrictions at the branch protection level — this is enforced at the workflow level instead.
 
