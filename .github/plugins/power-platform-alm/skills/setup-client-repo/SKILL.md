@@ -104,10 +104,11 @@ If an optional environment is declined:
 
 Gather these before running the GitHub environment setup commands in Step 4.
 
+> **Azure AD tenant ID**: You do not need to look this up now. We will derive it automatically from your authentication in Step 5 using `az account show --query tenantId -o tsv`.
+
 | # | What to ask | Key | Example |
 |---|-------------|-----|---------|
-| 10 | Azure AD tenant ID — the same for all environments | `azureTenantId` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
-| 11 | For each environment, do you already have a **service principal (Azure AD app registration)** set up? GitHub Actions authenticates to Dataverse as a service principal — an app registration in Azure AD that has been added as a Dataverse App User. The **Application (Client) ID** is shown after running `pac admin create-service-principal` or in the Azure Portal under the app registration. **If you don't have these yet, skip this for now** — Step 5 walks through creating them. If you already have the IDs, provide one per environment and Step 5 will only need to add the OIDC federated credentials. | `clientId` per env | `yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy` |
+| 10 | GitHub Actions authenticates to each Dataverse environment using an **Azure AD app registration** (also called a service principal) that has been granted the **System Administrator** security role in that environment. Do you already have one of these set up for any of your environments? If so, provide the **Application (Client) ID** for each — you can find this in the Azure Portal under **Azure Active Directory → App registrations → [your app] → Application (client) ID**, or it was printed when `pac admin create-service-principal` was last run. **If you don't have any yet, that's fine** — Step 5 will walk through creating them with a single command. Provide only the IDs you already have; we'll create the rest. | `clientId` per env | `yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy` |
 
 ---
 
@@ -249,17 +250,47 @@ GitHub Actions authenticates to Dataverse using OIDC — no stored passwords or 
 1. An **Azure AD app registration** (service principal) added as an App User to the Dataverse environment
 2. A **federated identity credential** on that app registration, scoped to the matching GitHub Environment
 
-Two roles are required (may be the same person):
-- **Power Platform Admin** — creates the Dataverse App User via `pac admin create-service-principal`
-- **Azure AD App Owner** or **Privileged Role Admin** — adds the federated credentials via `az ad app federated-credential create`
+Two roles are typically required (may be the same person in smaller organizations):
+- **Power Platform Admin** — needed to create a Dataverse App User via `pac admin create-service-principal`
+- **Azure AD App Owner** or **Privileged Role Admin** — needed to add federated credentials via the helper script or `az ad app federated-credential create`
 
-> **Need to hand this off to an admin?** — say `"help me set up OIDC"` or `"set up federated credentials"` and the `setup-oidc` skill will walk through the process step by step and can generate ready-to-share instructions for whoever manages your Azure AD or Dataverse tenant.
+> **This step is not optional.** Nothing will work — no CI deployments, no solution sync, no promote — until OIDC is configured for at least the dev environment. If you don't have the required permissions yourself, continue below to generate a ready-to-share hand-off document for your admin.
+
+> **Already have client IDs from the intake?** Skip Step 5a entirely for those environments — the app registration already exists and is registered in Dataverse. You only need to add federated credentials (Step 5b).
 
 ---
 
-#### Path A — You already have client IDs (provided in intake above)
+#### Step 5a — Create the service principal *(skip for environments where you already have a client ID)*
 
-The app registrations exist and are registered in Dataverse. You only need to add the OIDC federated credentials.
+This step requires **Power Platform Admin** permissions in the target Dataverse environment. It creates an Azure AD app registration and grants it the System Administrator role in Dataverse — all in one command.
+
+```powershell
+# Authenticate once per tenant — this works for all environments in the same tenant.
+# Use any environment URL in your tenant — it's just used to identify the tenant.
+pac auth create --environment <any-dataverse-env-url>
+
+# Create a unique app registration and Dataverse App User for each environment.
+# Run once per environment that does NOT already have a client ID.
+pac admin create-service-principal --environment <dataverse-env-url-1>
+pac admin create-service-principal --environment <dataverse-env-url-2>
+# ... repeat for each remaining environment without an existing client ID
+```
+
+Each `pac admin create-service-principal` call outputs:
+- **Application (Client) ID** — unique per environment; save each one
+- **Tenant ID** — your Azure AD tenant; same for all environments
+
+Save all client IDs — you need them for Steps 5b, 5c, and Step 6.
+
+> **Not a Power Platform Admin?** See the **Admin Hand-Off** section below. Generate the filled-in instructions and share with your admin before continuing — you can finish Steps 6–9 while you wait for the admin to complete Step 5.
+
+---
+
+#### Step 5b — Add federated identity credentials
+
+This step requires being an **Owner of the app registration** in Azure AD (or a Privileged Role Admin).
+
+For environments where you provided a client ID during intake, use that ID. For environments where you just ran Step 5a, use the client ID from that output.
 
 **Prerequisite:** Azure CLI installed and logged in.
 ```powershell
@@ -267,80 +298,62 @@ winget install Microsoft.AzureCLI   # if not already installed
 az login
 ```
 
-Run the helper script from `.platform` once per environment (each environment has its own app registration from Step 5a):
+Run the helper script from `.platform` once per environment:
 
 ```powershell
+# Repeat for each environment — use the client ID for THAT specific environment
 .platform/.github/workflows/scripts/Setup-GitHubFederatedCredentials.ps1 `
-    -AppRegistrationId "<env-1-client-id>" `
+    -AppRegistrationId "<client-id-for-env-1>" `
     -GitHubOrg "<githubOrg>" `
     -RepositoryName "<repoName>" `
     -Environments @("<env-slug-1>")
 
 .platform/.github/workflows/scripts/Setup-GitHubFederatedCredentials.ps1 `
-    -AppRegistrationId "<env-2-client-id>" `
+    -AppRegistrationId "<client-id-for-env-2>" `
     -GitHubOrg "<githubOrg>" `
     -RepositoryName "<repoName>" `
     -Environments @("<env-slug-2>")
-# ... etc
+# ... repeat for each remaining environment
 ```
 
-The script adds a federated credential with subject `repo:<githubOrg>/<repoName>:environment:<env-slug>` for each slug. It skips any that already exist and prints a created / skipped / error summary.
-
-Then proceed to the **Verify** step below.
+The script creates a federated credential with subject `repo:<githubOrg>/<repoName>:environment:<env-slug>` for each slug. It skips credentials that already exist and prints a created / skipped / error summary.
 
 ---
 
-#### Path B — Starting from scratch (no client IDs yet)
+#### Step 5c — Set `DATAVERSE_CLIENT_ID` for any environments not already set in Step 4
 
-Do this for **every** environment — inner-loop environments (dev, integration) need service principals too, not just deployment targets.
-
-**Step 5a — Create the service principal** *(Power Platform Admin required)*
+If you ran Step 5a and got new client IDs that weren't available when you ran Step 4:
 
 ```powershell
-# Authenticate once — pac auth is per-tenant, not per-environment
-pac auth create --environment <any-dataverse-env-url>
-
-# Create an Azure AD app registration and register it as a Dataverse App User
-# Repeat for each environment that needs its own service principal
-pac admin create-service-principal --environment <dataverse-env-url>
+# Set the client ID for each environment where it was missing in Step 4
+gh variable set DATAVERSE_CLIENT_ID --env <env-slug> --repo "<githubOrg>/<repoName>" --body "<client-id>"
 ```
-
-Note the **Application (Client) ID** and **Tenant ID** from the output — you need these for Steps 5b, 5c, and the repo-level `AZURE_TENANT_ID` variable. Repeat `pac admin create-service-principal` for each environment that needs its own service principal.
-
-> **Not a Power Platform Admin?** Share the command above with your tenant admin. They only need `pac` installed (`winget install Microsoft.PowerPlatform.CLI`) and must authenticate with `pac auth create --environment <url>` before running the create command.
-
-**Step 5b — Add federated credentials** *(Azure AD App Owner required)*
-
-```powershell
-az login
-
-.platform/.github/workflows/scripts/Setup-GitHubFederatedCredentials.ps1 `
-    -AppRegistrationId "<client-id-from-5a>" `
-    -GitHubOrg "<githubOrg>" `
-    -RepositoryName "<repoName>" `
-    -Environments @("<env-slug>")
-```
-
-**Step 5c — Set the client ID in the GitHub Environment** *(if not already set in Step 4)*
-
-```powershell
-gh variable set DATAVERSE_CLIENT_ID --env <env-slug> --repo "<org>/<repo>" --body "<client-id-from-5a>"
-```
-
-Repeat steps 5a–5c for each environment.
 
 ---
 
-#### Verify
+#### Step 5d — Verify
 
-After completing all environments, run `test-oidc-auth.yml` to confirm each one authenticates successfully:
+Run `test-oidc-auth.yml` to confirm the full authentication chain works for each environment:
 
 ```powershell
-gh workflow run test-oidc-auth.yml --repo "<org>/<repo>"
-gh run watch --repo "<org>/<repo>"
+gh workflow run test-oidc-auth.yml --repo "<githubOrg>/<repoName>"
+gh run watch --repo "<githubOrg>/<repoName>"
 ```
 
-A green run confirms GitHub Actions can authenticate to that Dataverse environment using OIDC. If it fails, check that the federated credential subject matches the GitHub Environment slug exactly (`repo:<org>/<repo>:environment:<env-slug>`).
+A green run confirms GitHub Actions can authenticate to Dataverse using OIDC. If it fails, check:
+- The federated credential subject matches exactly: `repo:<githubOrg>/<repoName>:environment:<env-slug>` (case-sensitive)
+- The app registration has the System Administrator role in the target Dataverse environment
+- `az ad app federated-credential list --id <client-id>` shows the credential
+
+---
+
+#### Admin Hand-Off
+
+If you do not have Power Platform Admin or Azure AD permissions, use the `setup-oidc` skill to generate a ready-to-share document with all environment URLs and GitHub details pre-filled:
+
+> "Generate OIDC hand-off instructions for my admin"
+
+You can continue with Steps 6–9 while waiting for the admin to complete Step 5a. Come back to Step 5b once you have the client IDs.
 
 
 ---
@@ -354,7 +367,10 @@ $org  = "<githubOrg>"
 $repo = "<repoName>"
 
 # Azure tenant ID — shared across all environments
-gh variable set AZURE_TENANT_ID --repo "$org/$repo" --body "<tenantId>"
+# Derive automatically from your Azure CLI or pac authentication:
+$tenantId = az account show --query tenantId -o tsv
+# If az CLI is not available, use: (pac auth list | Select-String 'TenantId').ToString().Split(':')[-1].Trim()
+gh variable set AZURE_TENANT_ID --repo "$org/$repo" --body "$tenantId"
 
 # Default environment(s) targeted by automatic deploys on push to main
 # Derive from environments[]: use the test-tier slug (e.g. acme-test)
@@ -448,8 +464,53 @@ Write-Host "✓ Branch protection configured for main and develop" -ForegroundCo
 
 > **Review count**: `required_approving_review_count=1` is a sensible default. Set to `0` if the team works solo (no reviewer available), or increase for larger teams.
 
+### 10. Validate Main Solution and Create Initial Sync PR
+
+After OIDC is verified, check whether the main solution already exists in the dev environment. If it does not exist, it needs to be created before any inner-loop work can begin.
+
+**Check if the solution exists:**
+```powershell
+pac auth create --environment <devEnvUrl>   # if not already authenticated
+pac solution list --environment <devEnvUrl> | Select-String "<mainSolution>"
+```
+
+If the solution **is not found**:
+> "Your main solution `{mainSolution}` does not exist yet in the dev environment. Let's create it:
+> 1. Open the [Power Apps maker portal](<devEnvUrl>) and sign in
+> 2. Go to **Solutions** → **New solution**
+> 3. Set the display name to `{mainSolution}`, choose your publisher (`{publisher}` / prefix `{solutionPrefix}`)
+> 4. Click **Create**
+> Once created, come back and I'll sync it to the repository."
+
+Wait for the user to confirm the solution exists, then sync it to the repository and create the first PR to `develop`:
+
+```powershell
+$syncBranch = "sync/{mainSolution}-initial"
+git checkout develop
+git pull
+git checkout -b $syncBranch
+
+.platform/.github/workflows/scripts/Sync-Solution.ps1 `
+    -solutionName "{mainSolution}" `
+    -environmentUrl "{devEnvUrl}" `
+    -commitMessage "chore({mainSolution}): initial solution sync" `
+    -branchName $syncBranch
+
+git push origin $syncBranch
+
+gh pr create `
+    --base develop `
+    --head $syncBranch `
+    --title "chore({mainSolution}): initial solution sync" `
+    --body "Initial sync of ``{mainSolution}`` from dev environment. Merge this to establish the baseline solution metadata on develop."
+```
+
+Tell the user the PR link and ask them to review and merge it. Once merged, `develop` has the initial solution metadata and the repo is ready for feature development.
+
+---
+
 ## Next Steps
 
-Once setup is complete, you're ready to start development. Use the `start-feature` skill to kick off your first feature — it handles authenticating to your dev environment, creating the feature solution in Dataverse, branching, and wiring everything together:
+Once setup is complete and the initial sync PR is merged, you're ready to start development. Use the `start-feature` skill to kick off your first feature:
 
 > "Start a new feature" — or describe the feature you want to build and the agent will use `start-feature` automatically.

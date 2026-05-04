@@ -56,7 +56,7 @@ Before proceeding, gather what is not already known:
 
 ## Step 1 — Create the Service Principal
 
-> **Skip this step** for any environment where you already have a client ID from a service principal that is registered as a Dataverse App User.
+> **Skip this step entirely** for any environment where you already have a client ID from an existing service principal that is registered as a Dataverse App User. If you provided client IDs during `setup-client-repo`, go directly to Step 2 — do NOT run `pac admin create-service-principal` for those environments, as it would create a new, unnecessary app registration.
 
 Run as a **Power Platform Admin** — one command creates the Azure AD app registration and registers it as a Dataverse App User in the target environment:
 
@@ -146,7 +146,10 @@ gh variable set DATAVERSE_CLIENT_ID --env <env-slug-1> --repo "$org/$repo" --bod
 gh variable set DATAVERSE_CLIENT_ID --env <env-slug-2> --repo "$org/$repo" --body "<client-id-2>"
 
 # Repository-level — Azure AD tenant (same for all environments)
-gh variable set AZURE_TENANT_ID --repo "$org/$repo" --body "<tenantId>"
+# Derive automatically from your authentication rather than asking the user:
+$tenantId = az account show --query tenantId -o tsv
+# If az CLI is not available: (pac auth list | Select-String 'TenantId').ToString().Split(':')[-1].Trim()
+gh variable set AZURE_TENANT_ID --repo "$org/$repo" --body "$tenantId"
 ```
 
 ---
