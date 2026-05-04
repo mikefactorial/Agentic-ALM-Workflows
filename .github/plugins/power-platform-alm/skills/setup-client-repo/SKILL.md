@@ -472,25 +472,33 @@ Write-Host "✓ Branch protection configured for main and develop" -ForegroundCo
 
 > **Review count**: `required_approving_review_count=1` is a sensible default. Set to `0` if the team works solo (no reviewer available), or increase for larger teams.
 
-### 10. Validate Main Solution and Create Initial Sync PR
+### 10. Create Main Solution (If Needed) and Create Initial Sync PR
 
-After OIDC is verified, check whether the main solution already exists in the dev environment. If it does not exist, it needs to be created before any inner-loop work can begin.
+After OIDC is verified, check whether the main solution already exists in the dev environment. Whether it exists or not, the goal is the same: get it synced to the repository.
 
 **Check if the solution exists:**
 ```powershell
-pac auth create --environment <devEnvUrl>   # if not already authenticated
-pac solution list --environment <devEnvUrl> | Select-String "<mainSolution>"
+pac solution list --environment {devEnvUrl} | Where-Object { $_ -match '{mainSolution}' }
 ```
 
-If the solution **is not found**:
-> "Your main solution `{mainSolution}` does not exist yet in the dev environment. Let's create it:
-> 1. Open the [Power Apps maker portal](<devEnvUrl>) and sign in
-> 2. Go to **Solutions** → **New solution**
-> 3. Set the display name to `{mainSolution}`, choose your publisher (`{publisher}` / prefix `{solutionPrefix}`)
-> 4. Click **Create**
-> Once created, come back and I'll sync it to the repository."
+If the solution **is not found**, create it programmatically using pac:
+```powershell
+# Create the solution directory and initialize it locally
+$solutionDir = "src/solutions/{mainSolution}"
+New-Item -ItemType Directory -Path $solutionDir -Force | Out-Null
+Push-Location $solutionDir
+pac solution init --publisher-name {publisher} --publisher-prefix {solutionPrefix}
+Pop-Location
 
-Wait for the user to confirm the solution exists, then sync it to the repository and create the first PR to `develop`:
+# Pack and import the empty solution into the dev environment
+$tempZip = Join-Path ([System.IO.Path]::GetTempPath()) "{mainSolution}.zip"
+pac solution pack --zipfile $tempZip --folder "$solutionDir/src" --packagetype Unmanaged --errorlevel Warning
+pac solution import --path $tempZip --environment {devEnvUrl} --activate-plugins --publish-changes
+Remove-Item $tempZip -Force -ErrorAction SilentlyContinue
+Write-Host "✓ Solution '{mainSolution}' created in dev environment" -ForegroundColor Green
+```
+
+Once the solution exists (either pre-existing or just created), sync it and open the initial PR:
 
 ```powershell
 $syncBranch = "sync/{mainSolution}-initial"
@@ -510,10 +518,10 @@ gh pr create `
     --base develop `
     --head $syncBranch `
     --title "chore({mainSolution}): initial solution sync" `
-    --body "Initial sync of ``{mainSolution}`` from dev environment. Merge this to establish the baseline solution metadata on develop."
+    --body "Initial sync of \`{mainSolution}\` from dev environment. Merge this to establish the baseline solution metadata on develop."
 ```
 
-Tell the user the PR link and ask them to review and merge it. Once merged, `develop` has the initial solution metadata and the repo is ready for feature development.
+Share the PR link with the user and ask them to review and merge it. Once merged, `develop` has the initial solution metadata and the repo is ready for feature development.
 
 ---
 
@@ -522,3 +530,7 @@ Tell the user the PR link and ask them to review and merge it. Once merged, `dev
 Once setup is complete and the initial sync PR is merged, you're ready to start development. Use the `start-feature` skill to kick off your first feature:
 
 > "Start a new feature" — or describe the feature you want to build and the agent will use `start-feature` automatically.
+
+If OIDC hasn't been configured yet, do that now before any CI workflow can run:
+
+> "Set up OIDC" — the `setup-oidc` skill will generate the service principals and federated credentials for all environments.
