@@ -1,0 +1,98 @@
+name: Test OIDC Authentication
+
+# Callable workflow — validates federated credentials and OIDC authentication
+# for a given GitHub environment.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'GitHub Environment Name to test'
+        required: true
+        type: string
+    secrets:
+      HOOK_SECRETS:
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test-authentication:
+    name: 'Test OIDC Auth for ${{ inputs.environment }}'
+    runs-on: windows-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+
+      - name: Display workflow context
+        shell: pwsh
+        run: |
+          Write-Host "Testing OIDC authentication for GitHub Server"
+          Write-Host "=========================================="
+          Write-Host "Environment: ${{ inputs.environment }}"
+          Write-Host "Repository: ${{ github.repository }}"
+          Write-Host "Repository Owner: ${{ github.repository_owner }}"
+          Write-Host "GitHub Server URL: ${{ github.server_url }}"
+          Write-Host "=========================================="
+
+      - name: Setup Power Platform CLI
+        shell: pwsh
+        run: .platform\.github\workflows\scripts\Install-PacCli.ps1
+
+      - name: Test Client Libraries (Dataverse API & Power Platform CLI)
+        shell: pwsh
+        run: |
+          .platform\.github\workflows\scripts\Test-Clients.ps1 `
+            -EnvironmentUrl ${{ vars.DATAVERSE_URL }} `
+            -TenantId ${{ vars.AZURE_TENANT_ID }} `
+            -ClientId ${{ vars.DATAVERSE_CLIENT_ID }} `
+            -TestDataverseApi `
+            -TestPowerPlatformCli
+
+      - name: Authentication Test Summary
+        if: success()
+        shell: pwsh
+        run: |
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "OIDC Authentication Test: SUCCESS"
+          Write-Host "=========================================="
+          Write-Host ""
+          Write-Host "Validated:"
+          Write-Host "  GitHub Server OIDC token generation"
+          Write-Host "  Azure federated credential validation"
+          Write-Host "  Power Platform CLI installation"
+          Write-Host "  DataverseApiClient class with OIDC authentication"
+          Write-Host "  PowerPlatformClient class with OIDC authentication"
+          Write-Host "  Dataverse Web API queries and operations"
+          Write-Host "  Power Platform CLI commands and operations"
+          Write-Host ""
+          Write-Host "Your GitHub federated credentials are configured correctly!"
+
+      - name: Authentication Test Failed
+        if: failure()
+        shell: pwsh
+        run: |
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "OIDC Authentication Test: FAILED"
+          Write-Host "=========================================="
+          Write-Host ""
+          Write-Host "Common issues to check:"
+          Write-Host "  1. GitHub environment variables (DATAVERSE_URL, AZURE_TENANT_ID, DATAVERSE_CLIENT_ID) are set"
+          Write-Host "  2. GitHub environment '${{ inputs.environment }}' exists"
+          Write-Host "  3. Federated credential subject matches: repo:${{ github.repository }}:environment:${{ inputs.environment }}"
+          Write-Host "  4. App Registration has federated credential configured"
+          Write-Host ""
+          exit 1
