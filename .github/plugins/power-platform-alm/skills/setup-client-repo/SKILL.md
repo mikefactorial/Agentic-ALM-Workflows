@@ -118,6 +118,8 @@ Gather these before running the GitHub environment setup commands in Step 4.
 
 ## Procedure
 
+> **Execute all steps sequentially without pausing to ask "shall I continue?" between steps.** Only stop if a step fails, a required value is missing, or the user explicitly asks to pause. When an async operation (e.g., `gh run watch`) completes successfully, proceed immediately to the next step.
+
 ### 1. Fill in `environment-config.json`
 
 Open `deployments/settings/environment-config.json` and replace every `{{PLACEHOLDER}}` value with the values gathered above. This is the **only file** that needs editing for the core configuration.
@@ -386,6 +388,8 @@ If a run fails, diagnose before continuing:
 - Run `az ad app federated-credential list --id <client-id>` and confirm the subject is present
 - Do not proceed to Step 6 until all environments pass
 
+**Once all environments are green, continue immediately to Step 6 — do not pause or ask the user for confirmation.**
+
 
 ---
 
@@ -501,7 +505,7 @@ Write-Host "✓ Branch protection configured for main and develop" -ForegroundCo
 
 ### 10. Create Main Solution in Dataverse and Open Initial Sync PR
 
-> **This step is mandatory.** It creates the main solution in your dev Dataverse environment and syncs its metadata to the repository on the `develop` branch. This must complete before developers can start features against the solution.
+> **Do not pause here — proceed immediately after Step 9 completes.** This step is mandatory. It creates the main solution in your dev Dataverse environment and syncs its metadata to the repository on the `develop` branch. This must complete before developers can start features against the solution.
 
 The local `.cdsproj` was already created in Step 3b. This step ensures the solution exists in Dataverse, then pulls its metadata into the repo.
 
