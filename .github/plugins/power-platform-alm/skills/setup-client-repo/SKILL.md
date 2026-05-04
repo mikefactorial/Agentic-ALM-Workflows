@@ -254,23 +254,28 @@ GitHub Actions authenticates to Dataverse using OIDC — no stored passwords or 
 1. An **Azure AD app registration** (service principal) added as an App User to the Dataverse environment
 2. A **federated identity credential** on that app registration, scoped to the matching GitHub Environment
 
-Two roles are typically required (may be the same person in smaller organizations):
-- **Power Platform Admin** — needed to create a Dataverse App User via `pac admin create-service-principal`
-- **Azure AD App Owner** or **Privileged Role Admin** — needed to add federated credentials via the helper script or `az ad app federated-credential create`
+This step requires two permissions that may belong to different people:
+- **Power Platform Admin** — to create a Dataverse App User via `pac admin create-service-principal`
+- **Azure AD App Owner** or **Privileged Role Admin** — to add federated credentials via the helper script
 
-> **This step is not optional.** Nothing will work — no CI deployments, no solution sync, no promote — until OIDC is configured for at least the dev environment. If you don't have the required permissions yourself, continue below to generate a ready-to-share hand-off document for your admin.
+> **This step is not optional.** Nothing will work — no CI deployments, no solution sync, no promote — until OIDC is configured for at least the dev environment.
 
-> **Already have client IDs from the intake?** Skip Step 5a entirely for those environments — the app registration already exists and is registered in Dataverse. You only need to add federated credentials (Step 5b).
+**Ask the user:**
+> "Do you have Power Platform Admin permissions for your Dataverse environments, or would you prefer I generate hand-off instructions to share with your admin?"
+
+- **"I can set it up myself"** → proceed with Steps 5a–5d below
+- **"Generate hand-off instructions for my admin"** → use the `setup-oidc` skill to produce a ready-to-share document with all environment URLs and GitHub details pre-filled, then skip to Step 6. Come back to Steps 5b–5d once your admin returns the client IDs.
+
+> **Already have client IDs from the intake?** Skip Step 5a for those environments — the app registration already exists. Go straight to Step 5b.
 
 ---
 
 #### Step 5a — Create the service principal *(skip for environments where you already have a client ID)*
 
-This step requires **Power Platform Admin** permissions in the target Dataverse environment. It creates an Azure AD app registration and grants it the System Administrator role in Dataverse — all in one command.
+This step requires **Power Platform Admin** permissions. It creates an Azure AD app registration and grants it the System Administrator role in Dataverse — all in one command.
 
 ```powershell
-# Authenticate once per tenant — this works for all environments in the same tenant.
-# Use any environment URL in your tenant — it's just used to identify the tenant.
+# Authenticate once per tenant — use any environment URL in your tenant.
 pac auth create --environment <any-dataverse-env-url>
 
 # Create a unique app registration and Dataverse App User for each environment.
@@ -285,8 +290,6 @@ Each `pac admin create-service-principal` call outputs:
 - **Tenant ID** — your Azure AD tenant; same for all environments
 
 Save all client IDs — you need them for Steps 5b, 5c, and Step 6.
-
-> **Not a Power Platform Admin?** See the **Admin Hand-Off** section below. Generate the filled-in instructions and share with your admin before continuing — you can finish Steps 6–9 while you wait for the admin to complete Step 5.
 
 ---
 
@@ -348,16 +351,6 @@ A green run confirms GitHub Actions can authenticate to Dataverse using OIDC. If
 - The federated credential subject matches exactly: `repo:<githubOrg>/<repoName>:environment:<env-slug>` (case-sensitive)
 - The app registration has the System Administrator role in the target Dataverse environment
 - `az ad app federated-credential list --id <client-id>` shows the credential
-
----
-
-#### Admin Hand-Off
-
-If you do not have Power Platform Admin or Azure AD permissions, use the `setup-oidc` skill to generate a ready-to-share document with all environment URLs and GitHub details pre-filled:
-
-> "Generate OIDC hand-off instructions for my admin"
-
-You can continue with Steps 6–9 while waiting for the admin to complete Step 5a. Come back to Step 5b once you have the client IDs.
 
 
 ---
