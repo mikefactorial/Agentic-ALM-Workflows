@@ -73,24 +73,28 @@ Before proceeding, gather the following. Ask only for what is missing — do not
 |---|-------------|-----|---------|
 | 1 | Name for this project or organization | `clientName` | `Acme Corp Platform` |
 | 2 | One-line project or solution description | `productDescription` | `Power Platform solution for Acme Corp` |
-| 3 | Company or organization name (PascalCase, no spaces) — becomes the Dataverse publisher name and prefixes your plugin `.sln` file | `publisher` | `AcmeCorp` |
+| 3 | Your company or organization name in PascalCase (no spaces, no special characters). This becomes: (1) the Dataverse publisher name embedded in all solutions, (2) the namespace prefix for plugin code (e.g., `AcmeCorp.Plugins`), and (3) the prefix for your plugin `.sln` filename. Choose something that represents your org — this is embedded in solution and code artifacts and is not easy to change later. | `publisher` | `AcmeCorp` |
 | 4 | What is the name of your main Power Platform solution? (PascalCase, no spaces — more solutions can be added later) | `solutionName` | `AcmePlatform` |
-| 5 | Dataverse publisher prefix (lowercase, 3–5 chars) — the short prefix Dataverse prepends to all schema names for this publisher | `solutionPrefix` | `acm` |
+| 5 | The short publisher prefix used by Dataverse (lowercase, 3–5 characters). Dataverse prepends this to every schema name you create — tables, columns, relationships, flows, etc. (e.g., prefix `acm` → table `acm_MyTable`). **This is permanent** — it is baked into all solution component names and cannot be changed without breaking existing data and solutions. Choose carefully. | `solutionPrefix` | `acm` |
 | 6 | GitHub organization or personal account name (use the exact org name or your GitHub username for personal accounts) | `githubOrg` | `AcmeCorp` or `johndoe` |
 | 7 | GitHub repository name | `repoName` | `AcmeCorp-Platform` |
-| 8 | What short lowercase name should identify your deployment environments? (e.g., `acme` creates environments named `acme-dev`, `acme-test`, `acme-prod`) | `envPrefix` | `acme` |
-| 9 | Release tag suffix — appended to GitHub Release tags like `v2026.05.01.1-{tag}` (default: same as solution name) | `packageTag` | `AcmePlatform` |
-| 10 | Which work item tracking system do you use? | `trackingSystem` | `azureBoards` or `github` |
+| 8 | A short lowercase identifier used to name your deployment environments. This creates GitHub Environment slugs like `{prefix}-dev`, `{prefix}-integration`, `{prefix}-test`, `{prefix}-prod`. These must be unique within your GitHub repository. Typically matches your client abbreviation or project codename. | `envPrefix` | `acme` |
+| 9 | Release tag suffix — appended to GitHub Release tags (e.g., `v2026.05.01.1-AcmePlatform`). Defaults to the same value as your solution name. Only change this if you want a release tag identifier that differs from the solution name — for example, a project codename or abbreviation. | `packageTag` | `AcmePlatform` |
+| 10 | Which work item tracking system does your team use? This controls how work item IDs are formatted in commit messages and branch names. `azureBoards` uses `AB#12345` commit trailers and `AB12345` branch tags (links to Azure Boards). `github` uses `Closes #12345` trailers and `GH12345` branch tags (links to and closes GitHub Issues). | `trackingSystem` | `azureBoards` or `github` |
 
 ### Environment URLs
 
 Walk through these in order. Dev, Test, and Prod are required; Integration and Dev Test are optional.
 
-1. **Dev** *(required)* — "What is the URL of your dev environment? (e.g., `https://org-dev12345.crm.dynamics.com/`)"
-2. **Integration** *(optional)* — "Do you have a shared integration environment where features are assembled and promoted before release? *(Skip this if developers work directly from dev to test.)*" → if yes: "What is the URL? (e.g., `https://org-int67890.crm.dynamics.com/`)"
-3. **Dev Test** *(optional)* — "Do you have a dev-test environment for validating individual features before they reach integration or UAT?" → if yes: "What is the URL? (e.g., `https://org-dvt11111.crm.dynamics.com/`)"
-4. **Test / UAT** *(required)* — "What is the URL of your test or UAT environment? (e.g., `https://org-tst22222.crm.dynamics.com/`)"
-5. **Production** *(required)* — "What is the URL of your production environment? (e.g., `https://org-prd33333.crm.dynamics.com/`)"
+1. **Dev** *(required)* — Each developer has their own dev environment where they build and iterate on features as unmanaged solutions. Ask: "What is the URL of your dev environment? (e.g., `https://org-dev12345.crm.dynamics.com/`)"
+
+2. **Integration** *(optional)* — A shared integration environment is where all developers' feature solutions are assembled together and validated as a combined unit before the release goes to test/UAT. In multi-developer teams this catches conflicts between features early — problems that only appear when multiple features coexist in the same environment. In the inner loop, developers promote their completed features here before a release is cut. Ask: "Do you have a shared integration environment where all in-progress features are assembled before a release? Provide its URL, or leave blank to skip. (e.g., `https://org-int67890.crm.dynamics.com/` — skip if developers go directly from dev to test)"
+
+3. **Dev Test** *(optional)* — A dev-test environment receives individual feature solutions deployed as **managed** solutions, mirroring how the solution will behave in test and production. This lets teams catch deployment errors, missing dependencies, and solution layering issues before features reach UAT. Ask: "Do you have a dev-test environment for validating individual feature deployments as managed solutions before they reach integration or UAT? Provide its URL, or leave blank to skip. (e.g., `https://org-dvt11111.crm.dynamics.com/`)"
+
+4. **Test / UAT** *(required)* — The test or UAT environment is where stakeholders validate the combined solution before it goes to production. Ask: "What is the URL of your test or UAT environment? (e.g., `https://org-tst22222.crm.dynamics.com/`)"
+
+5. **Production** *(required)* — Ask: "What is the URL of your production environment? (e.g., `https://org-prd33333.crm.dynamics.com/`)"
 
 If an optional environment is declined:
 - **Integration** skipped: remove it from `innerLoopEnvironments[]` and set `solutionAreas[].integrationEnv` to the same slug as `devEnv`
@@ -104,7 +108,7 @@ If an optional environment is declined:
 
 Gather these before running the GitHub environment setup commands in Step 4.
 
-> **Azure AD tenant ID**: You do not need to look this up now. We will derive it automatically from your authentication in Step 5 using `az account show --query tenantId -o tsv`.
+> **Azure AD tenant ID**: You do not need to look this up in advance. In Step 6 we derive it directly from the pac CLI auth profile established in Step 5a — no Azure CLI login required.
 
 | # | What to ask | Key | Example |
 |---|-------------|-----|---------|
@@ -366,10 +370,14 @@ Run the following to set all required repository-level variables and secrets:
 $org  = "<githubOrg>"
 $repo = "<repoName>"
 
-# Azure tenant ID — shared across all environments
-# Derive automatically from your Azure CLI or pac authentication:
-$tenantId = az account show --query tenantId -o tsv
-# If az CLI is not available, use: (pac auth list | Select-String 'TenantId').ToString().Split(':')[-1].Trim()
+# Azure tenant ID — derived from the currently active pac auth profile.
+# First, ensure pac is pointing at a dev environment in the correct tenant. If you have multiple
+# pac auth profiles, select the right one: 'pac auth list' then 'pac auth select --index <n>'.
+# Note: if you used the admin hand-off path and haven't run pac auth create yet,
+# do so now (it does NOT require admin permissions):
+#   pac auth create --environment <devEnvUrl>
+$tenantId = (pac auth who | Where-Object { $_ -match '^\s*Tenant Id:' } |
+    ForEach-Object { ($_ -split ':\s+', 2)[1].Trim() })
 gh variable set AZURE_TENANT_ID --repo "$org/$repo" --body "$tenantId"
 
 # Default environment(s) targeted by automatic deploys on push to main
