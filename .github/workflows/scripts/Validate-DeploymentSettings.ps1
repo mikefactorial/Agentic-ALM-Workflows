@@ -8,8 +8,8 @@ param(
     [Parameter(Mandatory=$false)]
     [string]$ConfigPath = "./deployments/settings",
 
-    [Parameter(Mandatory=$true)]
-    [string]$TargetEnvironmentList,
+    [Parameter(Mandatory=$false)]
+    [string]$TargetEnvironmentList = "",
 
     [Parameter(Mandatory=$false)]
     [switch]$StrictMode
@@ -47,11 +47,20 @@ catch {
     exit 1
 }
 
-# Parse and validate target environments
+# Parse target environments — fall back to environment-config.json when not provided
 $targetEnvironments = $TargetEnvironmentList -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
 
 if ($targetEnvironments.Count -eq 0) {
-    Write-Error "No target environments specified in environment list"
+    $envConfigPath = Join-Path $ConfigPath "environment-config.json"
+    if (Test-Path $envConfigPath) {
+        $envConfig = Get-Content $envConfigPath -Raw | ConvertFrom-Json
+        $targetEnvironments = @($envConfig.environments | Where-Object { $_.url -notmatch '^\{\{' } | Select-Object -ExpandProperty slug)
+        Write-Host "Resolved target environments from environment-config.json: $($targetEnvironments -join ', ')" -ForegroundColor Gray
+    }
+}
+
+if ($targetEnvironments.Count -eq 0) {
+    Write-Error "No target environments found. Provide -TargetEnvironmentList or configure environments[] in environment-config.json."
     exit 1
 }
 

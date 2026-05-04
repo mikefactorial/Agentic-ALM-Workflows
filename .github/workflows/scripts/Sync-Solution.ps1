@@ -529,14 +529,15 @@ try {
                     $envVarsConfig | Add-Member -NotePropertyName "metadata" -NotePropertyValue ([PSCustomObject]@{}) -Force
                 }
                 
-                # Get list of environments to populate - use repository variable if available
-                $environmentsFromVar = $env:DEPLOYMENT_ENVIRONMENTS
-                if (-not [string]::IsNullOrWhiteSpace($environmentsFromVar)) {
-                    Write-Host "    Using environments from DEPLOYMENT_ENVIRONMENTS variable: $environmentsFromVar" -ForegroundColor Gray
-                    $environments = $environmentsFromVar -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+                # Get list of environments to populate from environment-config.json
+                $envConfigPath = Join-Path $repoRoot "deployments\settings\environment-config.json"
+                if (Test-Path $envConfigPath) {
+                    $envConfig = Get-Content $envConfigPath -Raw | ConvertFrom-Json
+                    $environments = @($envConfig.environments | Where-Object { $_.url -notmatch '^\{\{' } | Select-Object -ExpandProperty slug)
+                    Write-Host "    Resolved deployment environments from config: $($environments -join ', ')" -ForegroundColor Gray
                 }
                 else {
-                    Write-Warning "DEPLOYMENT_ENVIRONMENTS is not set. Skipping environment variable population. Set the DEPLOYMENT_ENVIRONMENTS repository variable and re-run."
+                    Write-Warning "    environment-config.json not found at '$envConfigPath'. Skipping environment variable population."
                     $environments = @()
                 }
                 
@@ -573,7 +574,7 @@ try {
                         }
                     }
 
-                    # --- Environment placeholder pass (gated on DEPLOYMENT_ENVIRONMENTS) ---
+                    # --- Environment placeholder pass ---
                     foreach ($env in $environments) {
                         Write-Host "      Processing environment: $env..." -ForegroundColor Gray
                         
@@ -636,67 +637,74 @@ try {
             $connMappingsPath = Join-Path $repoRoot "deployments\settings\connection-mappings.json"
             Write-Host "    connMappingsPath: $connMappingsPath" -ForegroundColor Gray
             Write-Host "    Path exists: $(Test-Path $connMappingsPath)" -ForegroundColor Gray
-            
-            if ($template.ConnectionReferences -and $template.ConnectionReferences.Count -gt 0) {
-                Write-Host "  Reading connection-mappings.json..." -ForegroundColor Gray
-                try {
-                    $connMappingsConfig = Get-Content $connMappingsPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-                    Write-Host "  ✓ connection-mappings.json parsed successfully" -ForegroundColor Gray
+
+            Write-Host "  Reading connection-mappings.json..." -ForegroundColor Gray
+            try {
+                $connMappingsConfig = Get-Content $connMappingsPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+                Write-Host "  ✓ connection-mappings.json parsed successfully" -ForegroundColor Gray
+            }
+            catch {
+                Write-Warning "  Failed to read/parse connection-mappings.json: $($_.Exception.Message)"
+                $connMappingsConfig = $null
+            }
+
+            if ($connMappingsConfig) {
+                Write-Host "  Updating connection mappings..." -ForegroundColor Gray
+
+                # Ensure environments object exists
+                if (-not $connMappingsConfig.environments) {
+                    Write-Host "    Creating environments property..." -ForegroundColor Gray
+                    $connMappingsConfig | Add-Member -NotePropertyName "environments" -NotePropertyValue ([PSCustomObject]@{}) -Force
                 }
-                catch {
-                    Write-Warning "  Failed to read/parse connection-mappings.json: $($_.Exception.Message)"
-                    $connMappingsConfig = $null
+
+                # Get list of environments from environment-config.json
+                $envConfigPath = Join-Path $repoRoot "deployments\settings\environment-config.json"
+                if (Test-Path $envConfigPath) {
+                    $envConfig = Get-Content $envConfigPath -Raw | ConvertFrom-Json
+                    $environments = @($envConfig.environments | Where-Object { $_.url -notmatch '^\{\{' } | Select-Object -ExpandProperty slug)
+                    Write-Host "    Resolved deployment environments from config: $($environments -join ', ')" -ForegroundColor Gray
                 }
-                
-                if ($connMappingsConfig) {
-                    Write-Host "  Updating connection mappings..." -ForegroundColor Gray
-                    
-                    # Ensure environments object exists
-                    if (-not $connMappingsConfig.environments) {
-                        Write-Host "    Creating environments property..." -ForegroundColor Gray
-                        $connMappingsConfig | Add-Member -NotePropertyName "environments" -NotePropertyValue ([PSCustomObject]@{}) -Force
+                else {
+                    Write-Warning "    environment-config.json not found at '$envConfigPath'. Skipping connection mapping population."
+                    $environments = @()
+                }
+
+                $newEnvironmentsAdded = 0
+                $newConnectionsAdded = 0
+
+                # Always ensure every environment slug exists as a key — even when there are no connection references.
+                # This prevents PR validation from failing with "environment not found in connection-mappings.json".
+                foreach ($env in $environments) {
+                    if (-not ($connMappingsConfig.environments.PSObject.Properties.Name -contains $env)) {
+                        Write-Host "        Adding environment stub: $env" -ForegroundColor Gray
+                        $connMappingsConfig.environments | Add-Member -NotePropertyName $env -NotePropertyValue ([PSCustomObject]@{}) -Force
+                        $newEnvironmentsAdded++
                     }
-                    
-                    # Get list of environments
-                    $environmentsFromVar = $env:DEPLOYMENT_ENVIRONMENTS
-                    if (-not [string]::IsNullOrWhiteSpace($environmentsFromVar)) {
-                        Write-Host "    Using environments from DEPLOYMENT_ENVIRONMENTS variable: $environmentsFromVar" -ForegroundColor Gray
-                        $environments = $environmentsFromVar -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
-                    }
-                    else {
-                        Write-Warning "DEPLOYMENT_ENVIRONMENTS is not set. Skipping connection mapping population. Set the DEPLOYMENT_ENVIRONMENTS repository variable and re-run."
-                        $environments = @()
-                    }
-                    
-                    $newConnectionsAdded = 0
-                    
+                }
+
+                # Populate per-connector placeholders only when the solution has connection references
+                if ($template.ConnectionReferences -and $template.ConnectionReferences.Count -gt 0) {
                     # Sort connection references alphabetically by ConnectorId for easier lookup
                     $sortedConnRefs = $template.ConnectionReferences | Sort-Object -Property ConnectorId
-                    
+
                     Write-Host "    Processing $($sortedConnRefs.Count) connection reference(s)..." -ForegroundColor Gray
                     foreach ($env in $environments) {
                         Write-Host "      Processing environment: $env..." -ForegroundColor Gray
-                        
-                        # Add environment if it doesn't exist
-                        if (-not ($connMappingsConfig.environments.PSObject.Properties.Name -contains $env)) {
-                            Write-Host "        Adding environment..." -ForegroundColor Gray
-                            $connMappingsConfig.environments | Add-Member -NotePropertyName $env -NotePropertyValue ([PSCustomObject]@{}) -Force
-                        }
-                        
+
                         $envConfig = $connMappingsConfig.environments.$env
-                        
+
                         # Add placeholder for each connector type
                         foreach ($connRef in $sortedConnRefs) {
                             $connectorId = $connRef.ConnectorId
-                            
+
                             # Skip if connector ID is empty
                             if ([string]::IsNullOrWhiteSpace($connectorId)) {
                                 Write-Warning "          Skipping connection with empty ConnectorId"
                                 continue
                             }
-                            
+
                             Write-Host "          Processing Connection: $connectorId" -ForegroundColor Gray
-                            
+
                             $connPropNames = $envConfig.PSObject.Properties.Name
                             if (-not ($connPropNames -contains $connectorId)) {
                                 Write-Host "            Adding connector: $connectorId = '00000000000000000000000000000000'" -ForegroundColor Gray
@@ -706,35 +714,35 @@ try {
                             }
                         }
                     }
-                    
-                    Write-Host "    Connection mappings added: $newConnectionsAdded" -ForegroundColor Gray
-                    if ($newConnectionsAdded -gt 0) {
-                        Write-Host "  Saving connection-mappings.json..." -ForegroundColor Gray
-                        
-                        # Sort properties in each environment alphabetically
-                        foreach ($env in $environments) {
-                            if ($connMappingsConfig.environments.PSObject.Properties.Name -contains $env) {
-                                $envConfig = $connMappingsConfig.environments.$env
-                                $sortedProps = $envConfig.PSObject.Properties | Sort-Object Name
-                                $newEnvConfig = [PSCustomObject]@{}
-                                foreach ($prop in $sortedProps) {
-                                    $newEnvConfig | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value -Force
-                                }
-                                $connMappingsConfig.environments.$env = $newEnvConfig
-                            }
-                        }
-                        
-                        # Save updated connection-mappings.json
-                        $connMappingsConfig | ConvertTo-Json -Depth 10 | Set-Content $connMappingsPath -Encoding UTF8
-                        Write-Host "  ✓ Added $newConnectionsAdded connection placeholder(s) to connection-mappings.json" -ForegroundColor Green
-                    }
                 }
                 else {
-                    Write-Warning "  Skipping connection mapping update - could not read connection-mappings.json"
+                    Write-Host "  No connection references in solution" -ForegroundColor Gray
+                }
+
+                Write-Host "    Environment stubs added: $newEnvironmentsAdded, Connection placeholders added: $newConnectionsAdded" -ForegroundColor Gray
+                if ($newEnvironmentsAdded -gt 0 -or $newConnectionsAdded -gt 0) {
+                    Write-Host "  Saving connection-mappings.json..." -ForegroundColor Gray
+
+                    # Sort connector properties within each environment alphabetically
+                    foreach ($env in $environments) {
+                        if ($connMappingsConfig.environments.PSObject.Properties.Name -contains $env) {
+                            $envSlot = $connMappingsConfig.environments.$env
+                            $sortedProps = $envSlot.PSObject.Properties | Sort-Object Name
+                            $newEnvConfig = [PSCustomObject]@{}
+                            foreach ($prop in $sortedProps) {
+                                $newEnvConfig | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value -Force
+                            }
+                            $connMappingsConfig.environments.$env = $newEnvConfig
+                        }
+                    }
+
+                    # Save updated connection-mappings.json
+                    $connMappingsConfig | ConvertTo-Json -Depth 10 | Set-Content $connMappingsPath -Encoding UTF8
+                    Write-Host "  ✓ Updated connection-mappings.json ($newEnvironmentsAdded environment stub(s), $newConnectionsAdded placeholder(s) added)" -ForegroundColor Green
                 }
             }
             else {
-                Write-Host "  No connection references in solution" -ForegroundColor Gray
+                Write-Warning "  Skipping connection mapping update - could not read connection-mappings.json"
             }
         }
     }

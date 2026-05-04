@@ -256,8 +256,17 @@ Write-Host ""
 # Split solution list
 $solutions = $solutionList -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
 
-# Split environment list
+# Split environment list — fall back to environment-config.json when not provided
 $targetEnvironments = $targetEnvironmentList -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+
+if ($targetEnvironments.Count -eq 0) {
+    $envConfigPath = Join-Path $repoRoot "deployments\settings\environment-config.json"
+    if (Test-Path $envConfigPath) {
+        $envConfig = Get-Content $envConfigPath -Raw | ConvertFrom-Json
+        $targetEnvironments = @($envConfig.environments | Where-Object { $_.url -notmatch '^\{\{' } | Select-Object -ExpandProperty slug)
+        Write-Host "Resolved target environments from environment-config.json: $($targetEnvironments -join ', ')" -ForegroundColor Gray
+    }
+}
 
 if ($solutions.Count -eq 0) {
     Write-Error "No solutions specified in solution list"
@@ -269,7 +278,7 @@ $solutions | ForEach-Object { Write-Host "  • $_" -ForegroundColor Gray }
 Write-Host ""
 
 if ($targetEnvironments.Count -eq 0) {
-    Write-Warning "No target environments specified — deployment settings files will not be generated."
+    Write-Warning "No target environments found in environment-config.json — deployment settings files will not be generated."
 } else {
     Write-Host "Target environments: $($targetEnvironments.Count)" -ForegroundColor White
     $targetEnvironments | ForEach-Object { Write-Host "  • $_" -ForegroundColor Gray }

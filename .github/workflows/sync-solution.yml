@@ -46,7 +46,6 @@ permissions:
 env:
   HOOK_VARIABLES: ${{ vars.HOOK_VARIABLES }}
   HOOK_SECRETS: ${{ secrets.HOOK_SECRETS }}
-  DEPLOYMENT_ENVIRONMENTS: ${{ vars.DEPLOYMENT_ENVIRONMENTS }}
 
 jobs:
   sync-solution:

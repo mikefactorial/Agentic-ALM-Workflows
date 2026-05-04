@@ -214,7 +214,6 @@ jobs:
         run: >-
           .platform\.github\workflows\scripts\Validate-DeploymentSettings.ps1
           -SolutionList "${{ steps.changed-solutions.outputs.solution_list }}"
-          -TargetEnvironmentList "${{ vars.DEPLOYMENT_ENVIRONMENTS }}"
 
       - name: Build changed solutions
         if: steps.changed-solutions.outputs.has_changes == 'true'
@@ -222,7 +221,6 @@ jobs:
         run: |
           .platform\.github\workflows\scripts\Build-Solutions.ps1 `
             -solutionList "${{ steps.changed-solutions.outputs.solution_list }}" `
-            -targetEnvironmentList "${{ vars.DEPLOYMENT_ENVIRONMENTS }}" `
             -artifactsPath "./artifacts/solutions"
 
       - name: Run Solution Checker
