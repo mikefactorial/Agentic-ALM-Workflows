@@ -64,14 +64,6 @@ if ($targetEnvironments.Count -eq 0) {
     exit 1
 }
 
-# Validate all target environments exist
-foreach ($targetEnvironment in $targetEnvironments) {
-    if (-not $connectionMappings.environments.PSObject.Properties.Name -contains $targetEnvironment) {
-        Write-Error "Target environment '$targetEnvironment' not found in connection-mappings.json"
-        exit 1
-    }
-}
-
 Write-Host "Target Environment(s): $($targetEnvironments -join ', ')" -ForegroundColor White
 Write-Host "Solutions to validate: $(($SolutionList -split ',').Count)" -ForegroundColor White
 Write-Host ""
