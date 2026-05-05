@@ -20,6 +20,7 @@ class PowerPlatformClient {
     [bool]$UseInteractive
     [bool]$IsAuthenticated
     [string]$AuthProfileName
+    [int]$ExistingProfileIndex
 
     # Constructor for interactive authentication (local development)
     PowerPlatformClient([string]$environmentUrl) {
@@ -28,6 +29,7 @@ class PowerPlatformClient {
         $this.UseFederated = $false
         $this.IsAuthenticated = $false
         $this.AuthProfileName = "interactive-profile-$(Get-Random)"
+        $this.ExistingProfileIndex = -1
         
         Write-Verbose "PowerPlatformClient initialized with interactive authentication"
         Write-Verbose "Environment URL: $environmentUrl"
@@ -48,6 +50,7 @@ class PowerPlatformClient {
         $this.UseInteractive = $false
         $this.IsAuthenticated = $false
         $this.AuthProfileName = "federated-profile-$(Get-Random)"
+        $this.ExistingProfileIndex = -1
         
         Write-Verbose "PowerPlatformClient initialized with federated authentication (OIDC)"
         Write-Verbose "Environment URL: $environmentUrl"
@@ -118,6 +121,27 @@ class PowerPlatformClient {
         }
     }
 
+    # Find an existing pac auth profile whose URL matches the given environment URL.
+    # Returns the profile index, or -1 if not found.
+    [int] FindExistingProfile([string]$envUrl) {
+        $normalizedUrl = $envUrl.TrimEnd('/')
+        $output = pac auth list 2>&1 | Out-String
+        foreach ($line in ($output -split "`n")) {
+            if ($line -match '\[(\d+)\]' -and $line -match '(https://[^\s]+)') {
+                $idx = [int]$Matches[1]
+                # Re-match specifically for the URL (second match won't be in $Matches after first)
+                $urlMatch = [regex]::Match($line, 'https://[^\s]+')
+                if ($urlMatch.Success) {
+                    $profileUrl = $urlMatch.Value.TrimEnd('/')
+                    if ($profileUrl -eq $normalizedUrl) {
+                        return $idx
+                    }
+                }
+            }
+        }
+        return -1
+    }
+
     # Authenticate to Power Platform
     [void] Authenticate() {
         try {
@@ -140,15 +164,25 @@ class PowerPlatformClient {
             }
             elseif ($this.UseInteractive) {
                 # Interactive authentication (local development)
+                # Reuse an existing profile for this environment if one exists.
                 Write-Verbose "Using interactive authentication"
-                Write-Host "You will be prompted to sign in via your browser..." -ForegroundColor Yellow
-                
-                $result = pac auth create `
-                    --name $this.AuthProfileName `
-                    --environment $this.EnvironmentUrl 2>&1 | Out-String
-                
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Interactive authentication failed:`n$result"
+                $existingIdx = $this.FindExistingProfile($this.EnvironmentUrl)
+                if ($existingIdx -ge 0) {
+                    Write-Verbose "Reusing existing pac auth profile [$existingIdx] for $($this.EnvironmentUrl)"
+                    $selectResult = pac auth select --index $existingIdx 2>&1 | Out-String
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Failed to select existing auth profile [$existingIdx]: $selectResult"
+                    }
+                    $this.ExistingProfileIndex = $existingIdx
+                }
+                else {
+                    Write-Host "No existing pac auth profile found for $($this.EnvironmentUrl) — you will be prompted to sign in via your browser..." -ForegroundColor Yellow
+                    $result = pac auth create `
+                        --name $this.AuthProfileName `
+                        --environment $this.EnvironmentUrl 2>&1 | Out-String
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Interactive authentication failed:`n$result"
+                    }
                 }
             }
             else {
@@ -170,7 +204,12 @@ class PowerPlatformClient {
             throw "Not authenticated. Call Authenticate() first."
         }
         
-        $result = pac auth select --name $this.AuthProfileName 2>&1
+        if ($this.ExistingProfileIndex -ge 0) {
+            $result = pac auth select --index $this.ExistingProfileIndex 2>&1
+        }
+        else {
+            $result = pac auth select --name $this.AuthProfileName 2>&1
+        }
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to select auth profile: $result"
         }
