@@ -198,6 +198,7 @@ jobs:
             }
           }
 
+          $failed = 0
           foreach ($pair in $pairs) {
             $solution     = $pair.solution
             $env          = $pair.environment
@@ -213,9 +214,16 @@ jobs:
               Write-Host "  ✓ $solution / $env" -ForegroundColor Green
               $generated++
             }
-            catch { Write-Warning "  Skipped $solution / ${env}: $($_.Exception.Message)"; $skipped++ }
+            catch {
+              Write-Error "  FAILED $solution / ${env}: $($_.Exception.Message)"
+              $failed++
+            }
           }
-          Write-Host "Generated: $generated  Skipped: $skipped"
+          Write-Host "Generated: $generated  Skipped: $skipped  Failed: $failed"
+          if ($failed -gt 0) {
+            Write-Error "$failed settings file(s) failed to generate. Release aborted — fix the errors above and re-run."
+            exit 1
+          }
 
       - name: Upload deployment settings
         uses: actions/upload-artifact@v4

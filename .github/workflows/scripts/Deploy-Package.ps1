@@ -154,7 +154,14 @@ foreach ($solution in $solutionList) {
         | Select-Object -First 1
 
     if (-not $settingsFile) {
-        Write-Warning "No settings file for '$solution' / '$targetEnvironment' — skipping."
+        # Only fail if a settings template exists — missing template means the solution
+        # intentionally has no env vars or connection references, so no settings file is expected.
+        $templatePath = Join-Path $configPath "templates\${solution}_template.json"
+        if (Test-Path $templatePath) {
+            Write-Error "Settings file for '$solution' / '$targetEnvironment' is missing from the release assets, but a settings template exists at '$templatePath'. The release was likely built without generating settings. Re-run the release build or check Generate-DeploymentSettings output."
+            exit 1
+        }
+        Write-Host "  No settings file for '$solution' / '$targetEnvironment' (no template — intentional)" -ForegroundColor DarkGray
         continue
     }
 
