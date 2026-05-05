@@ -62,7 +62,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-
+# Required for spec-compliant ZIP creation (CMT importer rejects Compress-Archive output)
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 $repoRoot         = Resolve-Path (Join-Path $PSScriptRoot "..\..\..\..\") | Select-Object -ExpandProperty Path
@@ -263,7 +264,13 @@ foreach ($config in $packageConfigs) {
             $importXml.DocumentElement.SetAttribute("crmmigdataimportfile", "ConfigData.zip")
             $configDataSrcDir = Join-Path $dataRoot "$($config.DataSolution)\config-data"
             $configDataZipPath = Join-Path $pkgAssetsDir "ConfigData.zip"
-            Compress-Archive -Path "$configDataSrcDir\*" -DestinationPath $configDataZipPath -Force
+            if (Test-Path $configDataZipPath) { Remove-Item $configDataZipPath -Force }
+            [System.IO.Compression.ZipFile]::CreateFromDirectory(
+                $configDataSrcDir,
+                $configDataZipPath,
+                [System.IO.Compression.CompressionLevel]::Optimal,
+                $false  # do not include base directory — entries must be at zip root for CMT
+            )
         } else {
             Write-Host "  - No config data for $($config.DataSolution) (ConfigData.xml has no entities)" -ForegroundColor DarkGray
         }
@@ -275,7 +282,12 @@ foreach ($config in $packageConfigs) {
 
     $unmanagedZip = Join-Path $ArtifactsPath "${cfgName}_$PackageVersion.zip"
     if (Test-Path $unmanagedZip) { Remove-Item $unmanagedZip -Force }
-    Compress-Archive -Path "$tempDir\*" -DestinationPath $unmanagedZip -CompressionLevel Optimal -Force
+    [System.IO.Compression.ZipFile]::CreateFromDirectory(
+        $tempDir,
+        $unmanagedZip,
+        [System.IO.Compression.CompressionLevel]::Optimal,
+        $false
+    )
     Write-Host "  ✓ ${cfgName}_$PackageVersion.zip ($([math]::Round((Get-Item $unmanagedZip).Length/1MB,2)) MB)" -ForegroundColor Green
 
     # ── Create managed package ZIP ────────────────────────────────────────────
@@ -306,7 +318,12 @@ foreach ($config in $packageConfigs) {
 
     $managedZip = Join-Path $ArtifactsPath "${cfgName}_Managed_$PackageVersion.zip"
     if (Test-Path $managedZip) { Remove-Item $managedZip -Force }
-    Compress-Archive -Path "$tempMgrDir\*" -DestinationPath $managedZip -CompressionLevel Optimal -Force
+    [System.IO.Compression.ZipFile]::CreateFromDirectory(
+        $tempMgrDir,
+        $managedZip,
+        [System.IO.Compression.CompressionLevel]::Optimal,
+        $false
+    )
     Write-Host "  ✓ ${cfgName}_Managed_$PackageVersion.zip ($([math]::Round((Get-Item $managedZip).Length/1MB,2)) MB)" -ForegroundColor Green
 
     # Clean up temp dirs
