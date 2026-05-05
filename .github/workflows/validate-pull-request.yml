@@ -254,10 +254,75 @@ jobs:
           path: ./artifacts/solutions/*.zip
           if-no-files-found: ignore
 
+  validate-settings-generation:
+    name: Validate Settings Generation (PRs to main)
+    runs-on: windows-latest
+    if: inputs.base_ref == 'main'
+
+    steps:
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+
+      - name: Simulate settings generation for all package groups
+        shell: pwsh
+        run: |
+          $config = Get-Content 'deployments/settings/environment-config.json' -Raw | ConvertFrom-Json
+          $generated = 0; $skipped = 0; $failed = 0
+          $pairs = [System.Collections.Generic.List[object]]::new()
+          $seen  = [System.Collections.Generic.HashSet[string]]::new()
+
+          $envUrlLookup = @{}
+          foreach ($e in $config.environments) { $envUrlLookup[$e.slug] = $e.url }
+
+          foreach ($group in $config.packageGroups) {
+            foreach ($solution in $group.solutions) {
+              foreach ($env in @($group.environments)) {
+                if ($env -match '\{\{[A-Z_]+\}\}') { $skipped++; continue }
+                if ($envUrlLookup.ContainsKey($env) -and $envUrlLookup[$env] -match '\{\{[A-Z_]+\}\}') { $skipped++; continue }
+                $key = "${solution}:${env}"
+                if ($seen.Add($key)) { $pairs.Add([PSCustomObject]@{ solution = $solution; environment = $env }) }
+              }
+            }
+          }
+
+          foreach ($pair in $pairs) {
+            $solution     = $pair.solution
+            $env          = $pair.environment
+            $templatePath = "deployments\settings\templates\${solution}_template.json"
+            if (-not (Test-Path $templatePath)) { $skipped++; continue }
+
+            $outputFile = Join-Path ([System.IO.Path]::GetTempPath()) "${solution}_pr-validation_${env}_settings.json"
+            try {
+              .platform\.github\workflows\scripts\Generate-DeploymentSettings.ps1 `
+                -solutionName $solution -targetEnvironment $env `
+                -templatePath $templatePath -outputPath $outputFile `
+                -configPath 'deployments\settings'
+              Write-Host "  ✓ $solution / $env" -ForegroundColor Green
+              $generated++
+            }
+            catch {
+              Write-Error "  FAILED $solution / ${env}: $($_.Exception.Message)"
+              $failed++
+            }
+          }
+
+          Write-Host "Generated: $generated  Skipped: $skipped  Failed: $failed"
+          if ($failed -gt 0) {
+            Write-Error "$failed settings file(s) would fail to generate. Fix the errors above before merging to main."
+            exit 1
+          }
+
   validation-summary:
     name: Validation Summary
     runs-on: windows-latest
-    needs: [build-plugins, build-controls, build-solutions]
+    needs: [build-plugins, build-controls, build-solutions, validate-settings-generation]
     if: always()
 
     steps:
@@ -272,9 +337,10 @@ jobs:
           $summaryLines += ""
 
           foreach ($job in @(
-            @{ name = 'Plugin Build';    result = '${{ needs.build-plugins.result }}' },
-            @{ name = 'PCF Controls Build'; result = '${{ needs.build-controls.result }}' },
-            @{ name = 'Solutions Build'; result = '${{ needs.build-solutions.result }}' }
+            @{ name = 'Plugin Build';              result = '${{ needs.build-plugins.result }}' },
+            @{ name = 'PCF Controls Build';        result = '${{ needs.build-controls.result }}' },
+            @{ name = 'Solutions Build';           result = '${{ needs.build-solutions.result }}' },
+            @{ name = 'Settings Generation (main)'; result = '${{ needs.validate-settings-generation.result }}' }
           )) {
             if ($job.result -eq 'skipped') {
               $summaryLines += "- ⚪ **$($job.name)**: Skipped (no changes)"
