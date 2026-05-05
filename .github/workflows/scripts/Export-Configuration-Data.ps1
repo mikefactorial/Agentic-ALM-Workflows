@@ -234,16 +234,25 @@ function Export-Data {
 function Expand-DataZip {
     Write-Host "Extracting data.zip..." -ForegroundColor Cyan
 
+    # Build-Package.ps1 zips deployments\data\{solution}\config-data\* into ConfigData.zip.
+    # Extract here so the files land in the right place.
+    $configDataDir = Join-Path $solutionDataDir "config-data"
+
     try {
-        Expand-Archive -Path $dataZipPath -DestinationPath $solutionDataDir -Force
+        if (Test-Path $configDataDir) {
+            Remove-Item $configDataDir -Recurse -Force
+        }
+        New-Item -ItemType Directory -Path $configDataDir -Force | Out-Null
+
+        Expand-Archive -Path $dataZipPath -DestinationPath $configDataDir -Force
         Remove-Item $dataZipPath -Force
 
-        Write-Host "✓ Data extracted to: $solutionDataDir" -ForegroundColor Green
+        Write-Host "✓ Data extracted to: $configDataDir" -ForegroundColor Green
         Write-Host "  data.zip cleaned up" -ForegroundColor Gray
 
         Write-Host ""
         Write-Host "Extracted files:" -ForegroundColor Cyan
-        Get-ChildItem $solutionDataDir | ForEach-Object { Write-Host "  - $($_.Name)" }
+        Get-ChildItem $configDataDir | ForEach-Object { Write-Host "  - $($_.Name)" }
     }
     catch {
         throw "Failed to extract data.zip: $($_.Exception.Message)"

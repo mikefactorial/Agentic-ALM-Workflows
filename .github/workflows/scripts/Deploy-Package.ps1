@@ -135,17 +135,15 @@ if (-not $packageZip) {
 }
 Write-Host "Package ZIP : $($packageZip.Name)" -ForegroundColor Green
 
-# ── Build settings string from per-solution settings files ───────────────────
-# Each solution in the package may have a settings file: <solution>_<version>_<env>_settings.json
-# We merge all of them into a single semicolon-delimited key=value string for pac package deploy.
-#
-# pac solution import settings format → pac package deploy --settings format:
-#   ConnectionReferences[].{ LogicalName, ConnectionId }  →  LogicalName=ConnectionId
-#   EnvironmentVariables[].{ SchemaName, Value }          →  SchemaName=Value
+# ── Build settings for Package Deployer extension ────────────────────────────
+# Each solution's settings are encoded as:
+#   {solution}_deploymentsettings={base64(DeploymentSettings JSON)}
+# This matches the format that LoadDeploymentSettings() in PackageImportExtension reads.
+# ConnectionReferences use 'Name' (= LogicalName) as the key the extension stores.
 
 $solutionList = $solutions -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-$mergedSettings = [System.Collections.Generic.Dictionary[string,string]]::new(
-    [System.StringComparer]::OrdinalIgnoreCase)
+$settingsParts = [System.Collections.Generic.List[string]]::new()
+$totalKeys = 0
 
 foreach ($solution in $solutionList) {
     $settingsFile = Get-ChildItem -Path $artifactsPath `
@@ -168,6 +166,9 @@ foreach ($solution in $solutionList) {
     Write-Host "Settings    : $($settingsFile.Name)" -ForegroundColor Gray
     $s = Get-Content $settingsFile.FullName -Raw | ConvertFrom-Json
 
+    $connRefs = [System.Collections.Generic.List[hashtable]]::new()
+    $envVars  = [System.Collections.Generic.List[hashtable]]::new()
+
     foreach ($conn in @($s.ConnectionReferences)) {
         if (-not $conn -or -not $conn.LogicalName) { continue }
         if ([string]::IsNullOrWhiteSpace($conn.ConnectionId) -or
@@ -175,7 +176,8 @@ foreach ($solution in $solutionList) {
             Write-Warning "  Skipping connection '$($conn.LogicalName)' — no valid ConnectionId."
             continue
         }
-        $mergedSettings[$conn.LogicalName] = $conn.ConnectionId
+        # Package Deployer model uses 'Name' for the connection reference logical name
+        $connRefs.Add(@{ Name = $conn.LogicalName; ConnectionId = $conn.ConnectionId })
     }
 
     foreach ($var in @($s.EnvironmentVariables)) {
@@ -184,15 +186,26 @@ foreach ($solution in $solutionList) {
             Write-Warning "  Skipping env var '$($var.SchemaName)' — empty value."
             continue
         }
-        $mergedSettings[$var.SchemaName] = $var.Value
+        $envVars.Add(@{ SchemaName = $var.SchemaName; Value = $var.Value })
     }
+
+    if ($connRefs.Count -eq 0 -and $envVars.Count -eq 0) {
+        Write-Host "  No valid settings in '$($settingsFile.Name)' — skipping." -ForegroundColor DarkGray
+        continue
+    }
+
+    $settingsObj = @{ EnvironmentVariables = @($envVars); ConnectionReferences = @($connRefs) }
+    $json   = $settingsObj | ConvertTo-Json -Depth 5 -Compress
+    $base64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($json))
+    $settingsParts.Add("${solution}_deploymentsettings=$base64")
+    $totalKeys += $connRefs.Count + $envVars.Count
+    Write-Host "  $($connRefs.Count) connection ref(s), $($envVars.Count) env var(s)" -ForegroundColor Gray
 }
 
-$settingsArg = ($mergedSettings.GetEnumerator() |
-    ForEach-Object { "$($_.Key)=$($_.Value)" }) -join "|"
+$settingsArg = $settingsParts -join "|"
 
-if ($mergedSettings.Count -gt 0) {
-    Write-Host "Settings    : $($mergedSettings.Count) key(s) merged from $($solutionList.Count) solution(s)" -ForegroundColor Gray
+if ($totalKeys -gt 0) {
+    Write-Host "Settings    : $totalKeys key(s) across $($settingsParts.Count) solution(s)" -ForegroundColor Gray
 }
 else {
     Write-Host "Settings    : none (deploying without runtime settings)" -ForegroundColor DarkGray
