@@ -119,6 +119,8 @@ Gather these before running the GitHub environment setup commands in Step 4.
 ## Procedure
 
 > **Execute all 10 steps sequentially without pausing to ask "shall I continue?" between steps.** Only stop if a step fails, a required value is missing, or the user explicitly asks to pause. When an async operation (e.g., `gh run watch`) completes successfully, proceed immediately to the next step. **Do not write a summary or declare setup complete until Step 10 is finished and the initial sync PR has been created and shared with the user.**
+>
+> **Mandatory execution gates:** After each step, run the verification command(s) in that step and confirm expected output before proceeding. If verification fails or output is ambiguous, stop, remediate, and re-run verification. Never mark setup complete until all gate checks pass.
 
 ### 1. Fill in `environment-config.json`
 
@@ -292,7 +294,7 @@ This step requires two permissions that may belong to different people:
 **Ask the user:**
 > "Do you have Power Platform Admin permissions for your Dataverse environments, or would you prefer I generate hand-off instructions to share with your admin?"
 
-- **"I can set it up myself"** → proceed with Steps 5a–5d below
+- **"I can set it up myself"** → proceed with Steps 5a–5c below, then Step 6, then return to Step 5d for workflow validation
 - **"Generate hand-off instructions for my admin"** → use the `setup-oidc` skill to produce a ready-to-share document with all environment URLs and GitHub details pre-filled, then skip to Step 6. Come back to Steps 5b–5d once your admin returns the client IDs.
 
 > **Already have client IDs from the intake?** Skip Step 5a for those environments — the app registration already exists. Go straight to Step 5b.
@@ -369,6 +371,8 @@ gh variable set DATAVERSE_CLIENT_ID --env <env-slug> --repo "<githubOrg>/<repoNa
 
 #### Step 5d — Verify
 
+Run this step **after Step 6**. The OIDC validation workflow requires repository-level variables (`AZURE_TENANT_ID`, `HOOK_VARIABLES`, etc.) that are created in Step 6.
+
 Trigger `test-oidc-auth.yml` automatically for **each** environment slug by running the following in the terminal. Do not ask the user to run this — execute it yourself, once per slug, then watch the run to completion:
 
 ```powershell
@@ -385,10 +389,11 @@ Wait for each run to complete before triggering the next slug. A green run confi
 If a run fails, diagnose before continuing:
 - The federated credential subject must match exactly: `repo:<githubOrg>/<repoName>:environment:<env-slug>` (case-sensitive)
 - The app registration must have the System Administrator role in the target Dataverse environment
+- GitHub repo-level variable `AZURE_TENANT_ID` must be set
 - Run `az ad app federated-credential list --id <client-id>` and confirm the subject is present
-- Do not proceed to Step 6 until all environments pass
+- Do not proceed to Step 7 until all environments pass
 
-**Once all environments are green, continue immediately to Step 6 — do not pause or ask the user for confirmation.**
+**Once all environments are green, continue immediately to Step 7 — do not pause or ask the user for confirmation.**
 
 
 ---
@@ -421,6 +426,36 @@ gh variable set PR_VALIDATION_INTEGRATION_ENV --repo "$org/$repo" --body "<integ
 gh variable set HOOK_VARIABLES --repo "$org/$repo" --body "{}"
 gh secret  set HOOK_SECRETS   --repo "$org/$repo" --body "{}"
 ```
+
+Immediately verify all required repository-level values exist:
+
+```powershell
+gh variable list --repo "$org/$repo"
+gh secret list --repo "$org/$repo"
+```
+
+Expected minimum results before continuing:
+- Variables: `AZURE_TENANT_ID`, `PR_VALIDATION_INTEGRATION_ENV`, `HOOK_VARIABLES`
+- Secret: `HOOK_SECRETS`
+
+If any are missing, set only the missing values and re-run verification.
+
+---
+
+### 6b. Gate Check — Validate OIDC Authentication Workflows
+
+Now run Step 5d (OIDC test workflow) for each configured environment slug and wait for each run to complete. Do not continue until all target environment runs are green.
+
+```powershell
+$org  = "<githubOrg>"
+$repo = "<repoName>"
+
+# Run once per environment slug — replace <env-slug> each iteration
+gh workflow run test-oidc-auth.yml --repo "$org/$repo" --field environment=<env-slug>
+gh run watch --repo "$org/$repo"
+```
+
+If any run fails, return to Step 5b/5c/6 as needed, remediate, and re-run until all are green.
 
 ---
 
@@ -562,3 +597,36 @@ Once setup is complete and the initial sync PR is merged, you're ready to start 
 If OIDC hasn't been configured yet, do that now before any CI workflow can run:
 
 > "Set up OIDC" — the `setup-oidc` skill will generate the service principals and federated credentials for all environments.
+
+---
+
+## Recovery and Resume (Idempotent)
+
+Use this section when setup was interrupted, partially applied, or failed mid-run.
+
+1. Detect current state.
+
+```powershell
+$org  = "<githubOrg>"
+$repo = "<repoName>"
+
+gh variable list --repo "$org/$repo"
+gh secret list --repo "$org/$repo"
+
+# For each environment slug
+gh variable list --env <env-slug>
+```
+
+2. Re-apply only missing configuration.
+- Missing environment variable(s): set with `gh variable set ... --env <env-slug>`
+- Missing repo variable(s): set with `gh variable set ... --repo "$org/$repo"`
+- Missing repo secret(s): set with `gh secret set ... --repo "$org/$repo"`
+- Missing federated credentials: rerun `Setup-GitHubFederatedCredentials.ps1` for only affected slug(s)
+
+3. Re-validate.
+- Re-run Step 6 verification (`gh variable list`, `gh secret list`)
+- Re-run Step 6b OIDC tests for failed/missing environments only
+
+4. Resume from the last failed gate.
+- Do not restart from Step 1 unless `environment-config.json` changed
+- Continue to the next numbered step only after the failed gate turns green
