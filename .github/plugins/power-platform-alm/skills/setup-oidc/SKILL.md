@@ -43,14 +43,17 @@ These roles are often the same person, but in larger organizations they may be s
 
 Before proceeding, gather what is not already known:
 
+Auto-resolve GitHub coordinates before asking:
+1. Read `githubOrg` and `repoName` from `deployments/settings/environment-config.json` when those values are not placeholders.
+2. If config is missing or still placeholder-based, detect from the current repo remote (`git remote get-url origin`) or `gh repo view --json owner,name`.
+3. Only ask for org/repo if detection fails.
+
 | # | What to ask | Notes |
 |---|-------------|-------|
-| 1 | GitHub org or username | e.g., `AcmeCorp` |
-| 2 | GitHub repository name | e.g., `AcmeCorp-Platform` |
-| 3 | Which environments to configure? | List of slugs: `acme-dev`, `acme-test`, `acme-prod`, etc. |
-| 4 | Dataverse URL for each environment | e.g., `https://org-dev12345.crm.dynamics.com/` |
-| 5 | Do you already have app registration (client) IDs for any of these environments? | If yes, note which ones — skip Step 1 for those |
-| 6 | Do you need to hand this off to an admin, or can you run the steps yourself? | If hand-off: generate the Admin Instructions document below |
+| 1 | Which environments to configure? | List of slugs: `acme-dev`, `acme-test`, `acme-prod`, etc. |
+| 2 | Dataverse URL for each environment | e.g., `https://org-dev12345.crm.dynamics.com/` |
+| 3 | Do you already have app registration (client) IDs for any of these environments? | If yes, note which ones — skip Step 1 for those |
+| 4 | Do you need to hand this off to an admin, or can you run the steps yourself? | If hand-off: generate the Admin Instructions document below |
 
 ---
 

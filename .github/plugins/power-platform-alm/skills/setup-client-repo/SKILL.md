@@ -67,6 +67,11 @@ If not authenticated, run `gh auth login` and follow the prompts.
 
 Before proceeding, gather the following. Ask only for what is missing — do not ask for values that can be inferred or that have clear defaults.
 
+Auto-resolve GitHub coordinates before asking:
+1. If `deployments/settings/environment-config.json` already has non-placeholder values for `githubOrg` and `repoName`, use those.
+2. Else, detect from the checked-out repository remote (`git remote get-url origin`) or `gh repo view --json owner,name`.
+3. Only ask the user for `githubOrg` or `repoName` if both methods above fail.
+
 ### Core Identity
 
 | # | What to ask | Key | Example |
@@ -76,11 +81,9 @@ Before proceeding, gather the following. Ask only for what is missing — do not
 | 3 | Your company or organization name in PascalCase (no spaces, no special characters). This becomes: (1) the Dataverse publisher name embedded in all solutions, (2) the namespace prefix for plugin code (e.g., `AcmeCorp.Plugins`), and (3) the prefix for your plugin `.sln` filename. Choose something that represents your org — this is embedded in solution and code artifacts and is not easy to change later. | `publisher` | `AcmeCorp` |
 | 4 | What is the name of your main Power Platform solution? (PascalCase, no spaces — more solutions can be added later) | `solutionName` | `AcmePlatform` |
 | 5 | The short publisher prefix used by Dataverse (lowercase, 3–5 characters). Dataverse prepends this to every schema name you create — tables, columns, relationships, flows, etc. (e.g., prefix `acm` → table `acm_MyTable`). **This is permanent** — it is baked into all solution component names and cannot be changed without breaking existing data and solutions. Choose carefully. | `solutionPrefix` | `acm` |
-| 6 | GitHub organization or personal account name (use the exact org name or your GitHub username for personal accounts) | `githubOrg` | `AcmeCorp` or `johndoe` |
-| 7 | GitHub repository name | `repoName` | `AcmeCorp-Platform` |
-| 8 | A short lowercase identifier used to name your deployment environments. This creates GitHub Environment slugs like `{prefix}-dev`, `{prefix}-integration`, `{prefix}-test`, `{prefix}-prod`. These must be unique within your GitHub repository. Typically matches your client abbreviation or project codename. | `envPrefix` | `acme` |
-| 9 | Release tag suffix — appended to GitHub Release tags (e.g., `v2026.05.01.1-AcmePlatform`). Defaults to the same value as your solution name. Only change this if you want a release tag identifier that differs from the solution name — for example, a project codename or abbreviation. | `packageTag` | `AcmePlatform` |
-| 10 | Which work item tracking system does your team use? This controls how work item IDs are formatted in commit messages and branch names. `azureBoards` uses `AB#12345` commit trailers and `AB12345` branch tags (links to Azure Boards). `github` uses `Closes #12345` trailers and `GH12345` branch tags (links to and closes GitHub Issues). | `trackingSystem` | `azureBoards` or `github` |
+| 6 | A short lowercase identifier used to name your deployment environments. This creates GitHub Environment slugs like `{prefix}-dev`, `{prefix}-integration`, `{prefix}-test`, `{prefix}-prod`. These must be unique within your GitHub repository. Typically matches your client abbreviation or project codename. | `envPrefix` | `acme` |
+| 7 | Release tag suffix — appended to GitHub Release tags (e.g., `v2026.05.01.1-AcmePlatform`). Defaults to the same value as your solution name. Only change this if you want a release tag identifier that differs from the solution name — for example, a project codename or abbreviation. | `packageTag` | `AcmePlatform` |
+| 8 | Which work item tracking system does your team use? This controls how work item IDs are formatted in commit messages and branch names. `azureBoards` uses `AB#12345` commit trailers and `AB12345` branch tags (links to Azure Boards). `github` uses `Closes #12345` trailers and `GH12345` branch tags (links to and closes GitHub Issues). | `trackingSystem` | `azureBoards` or `github` |
 
 ### Environment URLs
 
