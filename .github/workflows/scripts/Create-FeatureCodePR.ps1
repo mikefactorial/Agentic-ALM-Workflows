@@ -130,19 +130,19 @@ Write-Host ""
 Write-Host "Fetching from origin..." -ForegroundColor DarkGray
 git fetch origin --quiet
 
-# ─── Guard: local code-first commits not yet pushed to origin ────────────────
-# If the user committed plugin/control changes locally but forgot to push,
+# ─── Guard: local commits not yet pushed to origin ──────────────────────────
+# If the user committed changes locally but forgot to push,
 # git diff against origin/$FeatureBranch would silently miss them.
-$unpushedCodeChanges = git log --oneline "origin/$FeatureBranch..HEAD" -- "src/controls/" "src/plugins/" 2>$null
+$unpushedCodeChanges = git log --oneline "origin/$FeatureBranch..HEAD" 2>$null
 if ($unpushedCodeChanges) {
     Write-Error @"
-Your local branch has code-first commits that have NOT been pushed to origin/$FeatureBranch.
+Your local branch has commits that have NOT been pushed to origin/$FeatureBranch.
 These would be silently missing from the code PR.
 
 Push them first:
   git push origin HEAD:$FeatureBranch
 
-Unpushed commits touching src/controls/ or src/plugins/:
+Unpushed commits:
 $unpushedCodeChanges
 "@
 }
@@ -153,39 +153,58 @@ if (-not $remoteBranchCheck) {
     Write-Error "Branch '$FeatureBranch' not found on origin. Push it first:`n  git push -u origin $FeatureBranch"
 }
 
-# ─── Detect code-first changes ───────────────────────────────────────────────
-Write-Host "Detecting code-first changes (src/controls/, src/plugins/)..." -ForegroundColor DarkGray
-$changedFiles = git diff --name-only "origin/$BaseBranch...origin/$FeatureBranch" -- "src/controls/" "src/plugins/"
+# ─── Detect changes — exclude feature solution metadata and generated files ──
+# Exclude:
+#   src/solutions/   — feature solution metadata (handled by promote/sync)
+#   deployments/settings/templates/ — auto-generated from sync, not hand-authored
+Write-Host "Detecting changes (excluding src/solutions/ and deployments/settings/templates/)..." -ForegroundColor DarkGray
+
+$excludePatterns = @(
+    '^src/solutions/',
+    '^deployments/settings/templates/'
+)
+
+$allChangedFiles = git diff --name-only "origin/$BaseBranch...origin/$FeatureBranch"
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "git diff failed. Ensure both branches exist on origin."
 }
 
+$changedFiles = $allChangedFiles | Where-Object {
+    $file = $_
+    $excluded = $false
+    foreach ($pattern in $excludePatterns) {
+        if ($file -match $pattern) { $excluded = $true; break }
+    }
+    -not $excluded
+}
+
 if (-not $changedFiles) {
     Write-Host ""
-    Write-Host "No code-first changes found on '$FeatureBranch' (src/controls/ or src/plugins/)." -ForegroundColor Yellow
+    Write-Host "No includable changes found on '$FeatureBranch' after excluding feature solution files." -ForegroundColor Yellow
     Write-Host "Nothing to include in a code PR." -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "If this is unexpected, verify:" -ForegroundColor DarkGray
-    Write-Host "  - The feature branch name is correct" -ForegroundColor DarkGray
-    Write-Host "  - PCF controls are under src/controls/ and plugins under src/plugins/" -ForegroundColor DarkGray
     exit 0
 }
 
-# Extract unique top-level project directories
-# Path pattern: src/{controls|plugins}/{solution}/{project}/...
-# We want depth-4 prefix: src/controls/pub_MySolution/PCF-MyControl
-$changedDirs = $changedFiles |
-    ForEach-Object {
-        $parts = $_ -split '/'
-        if ($parts.Count -ge 4) { ($parts[0..3] -join '/') }
-    } |
-    Where-Object { $_ } |
-    Sort-Object |
-    Select-Object -Unique
+# Group files into checkout targets.
+# For src/controls/ and src/plugins/ paths: group at project level (depth 4)
+#   e.g. src/controls/pub_MySolution/PCF-MyControl
+# For everything else: check out the individual file.
+$checkoutTargets = $changedFiles | ForEach-Object {
+    $parts = $_ -split '/'
+    if ($parts.Count -ge 4 -and $parts[0] -eq 'src' -and $parts[1] -in @('controls', 'plugins')) {
+        ($parts[0..3] -join '/')
+    } else {
+        $_
+    }
+} | Where-Object { $_ } | Sort-Object | Select-Object -Unique
+
+# Alias for backwards-compatible naming used later in the script
+$changedDirs = $checkoutTargets
 
 Write-Host ""
-Write-Host "Directories to include in PR:" -ForegroundColor White
+Write-Host "Paths to include in PR:" -ForegroundColor White
 $changedDirs | ForEach-Object { Write-Host "  + $_" -ForegroundColor Cyan }
 Write-Host ""
 
@@ -203,30 +222,41 @@ git checkout $BaseBranch --quiet
 git pull origin $BaseBranch --quiet
 git checkout -b $codeBranch --quiet
 
-# ─── Extract code-first files from feature branch ────────────────────────────
+# ─── Extract files from feature branch ──────────────────────────────────────
 Write-Host "Extracting files from origin/$FeatureBranch..." -ForegroundColor DarkGray
-foreach ($dir in $changedDirs) {
-    Write-Host "  Checking out $dir" -ForegroundColor DarkGray
-    git checkout "origin/$FeatureBranch" -- $dir
+foreach ($target in $changedDirs) {
+    Write-Host "  Checking out $target" -ForegroundColor DarkGray
+    git checkout "origin/$FeatureBranch" -- $target
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to check out '$dir' from 'origin/$FeatureBranch'."
+        Write-Error "Failed to check out '$target' from 'origin/$FeatureBranch'."
     }
 }
 
 # ─── Stage and commit ────────────────────────────────────────────────────────
-git add "src/controls/" "src/plugins/" 2>$null
+git add -A 2>$null
 
 $staged = git diff --cached --name-only
 if (-not $staged) {
     Write-Error "Nothing staged after extraction — unexpected. Check branch names and paths."
 }
 
-# Determine commit scope from solution folder names (e.g., pub_MySolution)
+# Determine commit scope from code-first solution folder names (e.g., pub_MySolution)
+# Only consider src/controls/ and src/plugins/ paths for the scope label
 $solutionFolders = $changedDirs |
+    Where-Object { $_ -match '^src/(controls|plugins)/' } |
     ForEach-Object { ($_ -split '/')[2] } |
     Where-Object { $_ } |
     Sort-Object |
     Select-Object -Unique
+
+if (-not $solutionFolders) {
+    # Fallback: use top-level directory names if no controls/plugins paths
+    $solutionFolders = $changedDirs |
+        ForEach-Object { ($_ -split '/')[0] } |
+        Where-Object { $_ } |
+        Sort-Object |
+        Select-Object -Unique
+}
 
 $scope     = $solutionFolders -join ','
 $descSuffix = if ($Description) { " $Description" } else { "" }
@@ -247,7 +277,9 @@ $includedList = ($changedDirs | ForEach-Object { "- ``$_``" }) -join "`n"
 $prBody = @"
 ## Code-First Changes — $workItemRef
 
-This PR contains only code-first components (PCF controls and/or plugins) extracted from \`$FeatureBranch\`.
+This PR contains code-first changes extracted from \`$FeatureBranch\`.
+
+Feature solution metadata (\`src/solutions/\`) and auto-generated settings templates (\`deployments/settings/templates/\`) are intentionally excluded — those travel with the feature branch lifecycle.
 
 **Solution components** (tables, forms, flows, etc.) were already committed to \`$BaseBranch\` by the promote workflow sync commit.
 
