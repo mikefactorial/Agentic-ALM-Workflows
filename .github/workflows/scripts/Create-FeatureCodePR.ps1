@@ -63,15 +63,40 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# ─── Normalize identifiers ────────────────────────────────────────────────────
-$workItem     = $WorkItemNumber -replace '^AB', ''
-$workItemFull = "AB$workItem"        # used in branch names (no # — not valid in branch names)
-$workItemRef  = "AB#$workItem"       # used in commit messages, PR titles, and PR body for ADO linking
-$codeBranch   = "chore/${workItemFull}_code"
+# ─── Read trackingSystem from environment-config.json ────────────────────────
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..\..\..\") -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty Path
+if (-not $repoRoot) {
+    # Fallback: walk up from script location looking for environment-config.json
+    $repoRoot = $PSScriptRoot
+    while ($repoRoot -and -not (Test-Path (Join-Path $repoRoot "deployments\settings\environment-config.json"))) {
+        $repoRoot = Split-Path $repoRoot -Parent
+    }
+}
+$envConfigPath = Join-Path $repoRoot "deployments\settings\environment-config.json"
+$trackingSystem = "azureBoards"  # default
+if (Test-Path $envConfigPath) {
+    $envConfig = Get-Content $envConfigPath -Raw | ConvertFrom-Json
+    if ($envConfig.trackingSystem) { $trackingSystem = $envConfig.trackingSystem }
+}
+
+# ─── Normalize identifiers based on trackingSystem ───────────────────────────
+if ($trackingSystem -eq "github") {
+    # GitHub Issues: strip any GH/AB prefix, produce GH{n} for branch names and Closes #{n} for trailers
+    $workItem     = $WorkItemNumber -replace '^(GH|AB|#)', ''
+    $workItemFull = "GH$workItem"          # used in branch names (no # — not valid in branch names)
+    $workItemRef  = "Closes #$workItem"    # used in commit messages, PR titles, and PR body for GitHub linking
+} else {
+    # Azure Boards (default): strip any AB prefix, produce AB{n} for branch names and AB#{n} for trailers
+    $workItem     = $WorkItemNumber -replace '^AB', ''
+    $workItemFull = "AB$workItem"          # used in branch names (no # — not valid in branch names)
+    $workItemRef  = "AB#$workItem"         # used in commit messages, PR titles, and PR body for ADO linking
+}
+$codeBranch = "chore/${workItemFull}_code"
 
 if (-not $Description) {
     # Default to the part of the branch name after the work item number
-    $Description = $FeatureBranch -replace '^feat/AB\d+_?', '' -replace '_', ' '
+    $Description = $FeatureBranch -replace '^feat/(AB|GH)\d+_?', '' -replace '_', ' '
 }
 
 # ─── Verify prerequisites ─────────────────────────────────────────────────────
@@ -104,6 +129,23 @@ Write-Host ""
 # ─── Fetch latest remote state ────────────────────────────────────────────────
 Write-Host "Fetching from origin..." -ForegroundColor DarkGray
 git fetch origin --quiet
+
+# ─── Guard: local code-first commits not yet pushed to origin ────────────────
+# If the user committed plugin/control changes locally but forgot to push,
+# git diff against origin/$FeatureBranch would silently miss them.
+$unpushedCodeChanges = git log --oneline "origin/$FeatureBranch..HEAD" -- "src/controls/" "src/plugins/" 2>$null
+if ($unpushedCodeChanges) {
+    Write-Error @"
+Your local branch has code-first commits that have NOT been pushed to origin/$FeatureBranch.
+These would be silently missing from the code PR.
+
+Push them first:
+  git push origin HEAD:$FeatureBranch
+
+Unpushed commits touching src/controls/ or src/plugins/:
+$unpushedCodeChanges
+"@
+}
 
 # Verify the feature branch exists on origin
 $remoteBranchCheck = git ls-remote --heads origin $FeatureBranch
