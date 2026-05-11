@@ -127,21 +127,19 @@ class PowerPlatformClient {
         $normalizedUrl = $envUrl.TrimEnd('/')
         $output = pac auth list 2>&1 | Out-String
         foreach ($line in ($output -split "`n")) {
-            if ($line -match '\[(\d+)\]' -and $line -match '(https://[^\s]+)') {
-                $idx = [int]$Matches[1]
-                # Re-match specifically for the URL (second match won't be in $Matches after first)
-                $urlMatch = [regex]::Match($line, 'https://[^\s]+')
-                if ($urlMatch.Success) {
-                    $profileUrl = $urlMatch.Value.TrimEnd('/')
-                    if ($profileUrl -eq $normalizedUrl) {
-                        return $idx
-                    }
+            $idxMatch = [regex]::Match($line, '\[(\d+)\]')
+            $urlMatch = [regex]::Match($line, 'https://[^\s]+')
+            if ($idxMatch.Success -and $urlMatch.Success) {
+                $idx = [int]$idxMatch.Groups[1].Value
+                $profileUrl = $urlMatch.Value.TrimEnd('/')
+                if ($profileUrl -eq $normalizedUrl) {
+                    return $idx
                 }
             }
         }
         return -1
     }
-
+    
     # Authenticate to Power Platform
     [void] Authenticate() {
         try {
