@@ -202,6 +202,45 @@ foreach ($solution in $solutionList) {
     Write-Host "  $($connRefs.Count) connection ref(s), $($envVars.Count) env var(s)" -ForegroundColor Gray
 }
 
+# ── Build managed identity settings ──────────────────────────────────────────
+# Reads managedIdentities[] from the package group in environment-config.json and
+# emits {solutionName}_managedidentities={base64_json_array} for each solution that
+# has managed identities configured for this target environment.
+# PackageImportExtension.ApplyManagedIdentityConfigurations() consumes these to patch
+# applicationId/tenantId in customizations.xml before solution import.
+if ($group -and $group.managedIdentities) {
+    $miBySOlution = @{}
+    foreach ($mi in $group.managedIdentities) {
+        if ([string]::IsNullOrWhiteSpace($mi.name) -or [string]::IsNullOrWhiteSpace($mi.solutionName)) {
+            Write-Warning "  Managed identity entry missing 'name' or 'solutionName' — skipping."
+            continue
+        }
+        $envMi = $mi.perEnvironment.$targetEnvironment
+        if (-not $envMi) {
+            Write-Host "  No managed identity config for '$($mi.name)' in '$targetEnvironment' — skipping." -ForegroundColor DarkGray
+            continue
+        }
+        if ([string]::IsNullOrWhiteSpace($envMi.applicationId) -or [string]::IsNullOrWhiteSpace($envMi.tenantId)) {
+            Write-Warning "  Managed identity '$($mi.name)': missing applicationId or tenantId for '$targetEnvironment' — skipping."
+            continue
+        }
+        $sol = $mi.solutionName
+        if (-not $miBySOlution.ContainsKey($sol)) { $miBySOlution[$sol] = [System.Collections.Generic.List[hashtable]]::new() }
+        $miBySOlution[$sol].Add(@{
+            name          = $mi.name
+            applicationId = $envMi.applicationId
+            tenantId      = $envMi.tenantId
+            solutionName  = $sol
+        })
+    }
+    foreach ($sol in $miBySOlution.Keys) {
+        $json   = $miBySOlution[$sol] | ConvertTo-Json -Depth 3 -Compress
+        $base64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($json))
+        $settingsParts.Add("${sol}_managedidentities=$base64")
+        Write-Host "  $($miBySOlution[$sol].Count) managed identity config(s) for '$sol'" -ForegroundColor Gray
+    }
+}
+
 $settingsArg = $settingsParts -join "|"
 
 if ($totalKeys -gt 0) {
