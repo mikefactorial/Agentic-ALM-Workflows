@@ -101,14 +101,19 @@ param(
 
     # --- Mode A: Managed identity configuration (applied after push) ---
     [Parameter(ParameterSetName = 'FromXml')]
-    [string]$ManagedIdentityName,
-
-    [Parameter(ParameterSetName = 'FromXml')]
     [string]$ManagedIdentityApplicationId,
 
     # AAD tenant for the managed identity (defaults to -TenantId auth param if omitted)
     [Parameter(ParameterSetName = 'FromXml')]
     [string]$ManagedIdentityTenantId,
+
+    # After linking, also configure the federated identity credential on the Azure AD app
+    [Parameter(ParameterSetName = 'FromXml')]
+    [switch]$ConfigureFic,
+
+    # Verify the federated identity credential after configure
+    [Parameter(ParameterSetName = 'FromXml')]
+    [switch]$VerifyFic,
 
     # --- Mode B: Individual step registration ---
     [Parameter(ParameterSetName = 'Step', Mandatory)]
@@ -886,26 +891,20 @@ Then re-run this script.
                 -EnvironmentUrl $EnvironmentUrl
 
             # Configure managed identity (create/update record + link to package)
-            if ($ManagedIdentityName) {
-                if (-not $ManagedIdentityApplicationId) {
-                    throw "-ManagedIdentityApplicationId is required when -ManagedIdentityName is specified."
-                }
+            if ($ManagedIdentityApplicationId) {
                 $miTenant = if ($ManagedIdentityTenantId) { $ManagedIdentityTenantId } else { $TenantId }
                 if (-not $miTenant) {
-                    throw "-ManagedIdentityTenantId (or -TenantId) is required when -ManagedIdentityName is specified."
+                    throw "-ManagedIdentityTenantId (or -TenantId) is required when -ManagedIdentityApplicationId is specified."
                 }
                 Write-Host "`n--- Configuring managed identity ---"
                 $miParams = @{
-                    EnvironmentUrl          = $EnvironmentUrl
-                    ManagedIdentityName     = $ManagedIdentityName
+                    PluginPackageUniqueName = $metadata.UniqueName
                     ApplicationId           = $ManagedIdentityApplicationId
                     AadTenantId             = $miTenant
-                    PluginPackageUniqueName = $metadata.UniqueName
                 }
-                if ($TenantId -and $ClientId) {
-                    $miParams['TenantId'] = $TenantId
-                    $miParams['ClientId'] = $ClientId
-                }
+                if ($EnvironmentUrl) { $miParams['EnvironmentUrl'] = $EnvironmentUrl }
+                if ($ConfigureFic)   { $miParams['ConfigureFic']   = $true }
+                if ($VerifyFic)      { $miParams['VerifyFic']      = $true }
                 & "$PSScriptRoot/Configure-ManagedIdentity.ps1" @miParams
                 if ($LASTEXITCODE -ne 0) { throw "Managed identity configuration failed." }
             }

@@ -1,32 +1,28 @@
 <#
 .SYNOPSIS
-    Creates or updates a managed identity in Dataverse and links it to a plugin package.
+    Creates or updates a managed identity linked to a plugin package using pac managed-identity.
 
 .DESCRIPTION
     Dataverse managed identity allows plugin packages to call external services (e.g., Azure,
     Microsoft Graph) using an Azure AD app registration without storing secrets in the plugin.
 
-    This script:
-      1. Creates or updates a 'managedidentity' record in Dataverse (matched by ApplicationId
-         + TenantId so it is idempotent).
-      2. Links the managed identity to the specified plugin package by setting
-         pluginpackage.managedidentityid.
-
-    The managed identity record uses:
-      - credentialsource = 2 (Managed — uses Azure AD workload identity, not client secret)
-      - subjectscope     = 1 (Environment scope)
+    This script wraps 'pac managed-identity' commands and is idempotent:
+      1. Looks up the plugin package record GUID by unique name.
+      2. Calls 'pac managed-identity get' to check whether an identity is already linked.
+      3. Calls 'pac managed-identity create' (new) or 'pac managed-identity update' (existing).
+      4. Optionally calls 'pac managed-identity configure-fic' to create the federated identity
+         credential on the Azure AD app registration (requires Azure permissions).
+      5. Optionally calls 'pac managed-identity verify-fic' to confirm the FIC is in place.
 
     Prerequisites:
+      - pac CLI installed and authenticated for the target environment
+        (run 'pac auth create --interactive --environment {url}' if needed)
       - Plugin package must already be pushed to the environment (run Register-Plugin.ps1 first)
       - The Azure AD app registration must already exist with the correct Application ID
-      - pac auth must be configured for the target environment OR provide -TenantId + -ClientId
-        for federated (OIDC) authentication
 
 .PARAMETER EnvironmentUrl
     Dataverse environment URL (e.g., 'https://myorg.crm.dynamics.com').
-
-.PARAMETER ManagedIdentityName
-    Display name for the managed identity record in Dataverse.
+    If omitted, uses the active pac auth profile's selected environment.
 
 .PARAMETER ApplicationId
     Azure AD app registration Application (client) ID as a GUID.
@@ -39,284 +35,199 @@
     This is the 'uniquename' from the pluginpackage.xml in source control
     (typically publisher-prefixed, e.g., 'pub_Publisher.Plugins.MySolution.Feature').
 
-.PARAMETER TenantId
-    (Authentication) Azure AD tenant ID for OIDC / federated auth. If omitted, uses
-    the active pac auth profile. Do not confuse with -AadTenantId (the managed identity tenant).
+.PARAMETER PluginPackageId
+    Dataverse record GUID of the plugin package. Use this instead of -PluginPackageUniqueName
+    if you already know the GUID (avoids the Web API lookup).
 
-.PARAMETER ClientId
-    (Authentication) Service principal client ID for OIDC / federated auth.
+.PARAMETER ComponentType
+    Dataverse component type string for pac managed-identity. Defaults to 'PluginPackage'.
+    Other supported values: 'PluginAssembly', 'ServiceEndpoint', 'CopilotStudio'.
 
-.PARAMETER ListOnly
-    List existing user-created managed identities and exit without making changes.
-    Useful for verifying what is already registered.
+.PARAMETER ConfigureFic
+    After creating/updating the managed identity, also run 'pac managed-identity configure-fic'
+    to create the federated identity credential on the Azure AD app registration.
+    Requires Azure AD permissions (Application.ReadWrite.All or Owner on the app registration).
+
+.PARAMETER VerifyFic
+    Run 'pac managed-identity verify-fic' to confirm the federated identity credential exists.
+
+.PARAMETER GetOnly
+    Show the managed identity currently linked to the component and exit. No changes made.
 
 .EXAMPLE
     # Create managed identity and link to plugin package
     .\Configure-ManagedIdentity.ps1 `
         -EnvironmentUrl "https://myorg.crm.dynamics.com" `
-        -ManagedIdentityName "MyProject Plugin Identity" `
         -ApplicationId "00000000-0000-0000-0000-000000000001" `
         -AadTenantId "00000000-0000-0000-0000-000000000002" `
         -PluginPackageUniqueName "pub_Publisher.Plugins.MySolution.Feature"
 
 .EXAMPLE
-    # List existing managed identities (no changes)
+    # Create MI + configure federated identity credential on Azure AD + verify
     .\Configure-ManagedIdentity.ps1 `
         -EnvironmentUrl "https://myorg.crm.dynamics.com" `
-        -ListOnly
-
-.EXAMPLE
-    # Federated auth (CI/CD)
-    .\Configure-ManagedIdentity.ps1 `
-        -EnvironmentUrl "https://myorg.crm.dynamics.com" `
-        -ManagedIdentityName "MyProject Plugin Identity" `
         -ApplicationId "00000000-0000-0000-0000-000000000001" `
         -AadTenantId "00000000-0000-0000-0000-000000000002" `
         -PluginPackageUniqueName "pub_Publisher.Plugins.MySolution.Feature" `
-        -TenantId "00000000-0000-0000-0000-000000000002" `
-        -ClientId "00000000-0000-0000-0000-000000000003"
+        -ConfigureFic -VerifyFic
+
+.EXAMPLE
+    # Show the current managed identity for a package (no changes)
+    .\Configure-ManagedIdentity.ps1 `
+        -EnvironmentUrl "https://myorg.crm.dynamics.com" `
+        -PluginPackageId "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" `
+        -GetOnly
+
+.EXAMPLE
+    # Skip lookup — pass the GUID directly
+    .\Configure-ManagedIdentity.ps1 `
+        -EnvironmentUrl "https://myorg.crm.dynamics.com" `
+        -ApplicationId "00000000-0000-0000-0000-000000000001" `
+        -AadTenantId "00000000-0000-0000-0000-000000000002" `
+        -PluginPackageId "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 #>
-[CmdletBinding(DefaultParameterSetName = 'Configure')]
+[CmdletBinding(DefaultParameterSetName = 'ByUniqueName')]
 param(
-    [Parameter(Mandatory)]
     [string]$EnvironmentUrl,
 
-    [Parameter(ParameterSetName = 'Configure', Mandatory)]
-    [string]$ManagedIdentityName,
+    # Identify the plugin package — by unique name (lookup) or by GUID (direct)
+    [Parameter(ParameterSetName = 'ByUniqueName', Mandatory)]
+    [string]$PluginPackageUniqueName,
 
-    [Parameter(ParameterSetName = 'Configure', Mandatory)]
+    [Parameter(ParameterSetName = 'ByGuid', Mandatory)]
+    [string]$PluginPackageId,
+
+    # Required for create/update (not needed for -GetOnly)
+    [Parameter(ParameterSetName = 'ByUniqueName')]
+    [Parameter(ParameterSetName = 'ByGuid')]
     [ValidateScript({ [Guid]::TryParse($_, [ref]([Guid]::Empty)) })]
     [string]$ApplicationId,
 
-    [Parameter(ParameterSetName = 'Configure', Mandatory)]
+    [Parameter(ParameterSetName = 'ByUniqueName')]
+    [Parameter(ParameterSetName = 'ByGuid')]
     [ValidateScript({ [Guid]::TryParse($_, [ref]([Guid]::Empty)) })]
     [string]$AadTenantId,
 
-    [Parameter(ParameterSetName = 'Configure', Mandatory)]
-    [string]$PluginPackageUniqueName,
+    [string]$ComponentType = 'PluginPackage',
 
-    # Auth (optional — falls back to pac auth profile)
-    [string]$TenantId,
-    [string]$ClientId,
-
-    [Parameter(ParameterSetName = 'List')]
-    [switch]$ListOnly
+    [switch]$ConfigureFic,
+    [switch]$VerifyFic,
+    [switch]$GetOnly
 )
 
 $ErrorActionPreference = 'Stop'
 
-# Source the Dataverse API client (same pattern as Register-Plugin.ps1)
-. "$PSScriptRoot/DataverseApiClient.ps1"
-
-#region Helper Functions
-
-function Initialize-ApiClient {
-    param([string]$EnvironmentUrl, [string]$TenantId, [string]$ClientId)
-    if ($TenantId -and $ClientId) {
-        Write-Host "Authenticating with federated credentials..."
-        return [DataverseApiClient]::new($TenantId, $ClientId, $EnvironmentUrl)
-    }
-    elseif ($TenantId) {
-        Write-Host "Authenticating interactively (tenant-scoped: $TenantId)..."
-        return [DataverseApiClient]::new($EnvironmentUrl, $TenantId)
-    }
-    else {
-        Write-Host "Authenticating with interactive pac auth profile..."
-        return [DataverseApiClient]::new($EnvironmentUrl)
-    }
+# ─── Verify pac is available ──────────────────────────────────────────────────
+if (-not (Get-Command pac -ErrorAction SilentlyContinue)) {
+    throw "'pac' CLI not found. Install from https://aka.ms/PowerAppsCLI"
 }
 
-function Get-OrCreateManagedIdentity {
-    <#
-    Idempotent create/update of a managedidentity record.
-    Matches on ApplicationId + TenantId — the combination is the stable identity key.
-    Returns the managed identity GUID.
-    #>
-    param(
-        [DataverseApiClient]$Client,
-        [string]$Name,
-        [string]$ApplicationId,
-        [string]$AadTenantId
-    )
-
-    Write-Host "Looking for existing managed identity (appId=$ApplicationId, tenantId=$AadTenantId)..." -ForegroundColor DarkGray
-
-    $filter = "applicationid eq $ApplicationId and tenantid eq $AadTenantId"
-    $existing = $Client.RetrieveMultiple('managedidentities',
-        "?`$filter=$filter&`$select=managedidentityid,name,applicationid,tenantid,credentialsource,subjectscope")
-
-    if ($existing -and $existing.Count -gt 0) {
-        $record = $existing[0]
-        $currentName = $record.name
-        Write-Host "Found existing managed identity: '$currentName' ($($record.managedidentityid))" -ForegroundColor Cyan
-
-        if ($currentName -ne $Name) {
-            Write-Host "  Updating name: '$currentName' -> '$Name'" -ForegroundColor DarkGray
-            $Client.Update('managedidentities', $record.managedidentityid, @{ name = $Name })
-            Write-Host "  Name updated." -ForegroundColor Green
-        }
-        else {
-            Write-Host "  Name unchanged — no update needed." -ForegroundColor DarkGray
-        }
-
-        return $record.managedidentityid
-    }
-
-    # Create new record
-    Write-Host "Creating managed identity: '$Name'" -ForegroundColor DarkGray
-    $body = @{
-        name             = $Name
-        applicationid    = $ApplicationId
-        tenantid         = $AadTenantId
-        credentialsource = 2   # Managed (Azure AD workload identity)
-        subjectscope     = 1   # Environment scope
-    }
-
-    $newId = New-DataverseRecord -Client $Client -EntityName 'managedidentities' -Data $body
-    Write-Host "Created managed identity: '$Name' ($newId)" -ForegroundColor Green
-    return $newId
-}
-
-function New-DataverseRecord {
-    param([DataverseApiClient]$Client, [string]$EntityName, [hashtable]$Data)
-
-    $Client.EnsureValidToken()
-    $url = "https://$($Client.DataverseHost)/api/data/v9.2/$EntityName"
-    $headers = @{
-        "Authorization"    = "Bearer $($Client.AccessToken)"
-        "Content-Type"     = "application/json"
-        "OData-MaxVersion" = "4.0"
-        "OData-Version"    = "4.0"
-    }
-    $body = $Data | ConvertTo-Json -Depth 10
-
-    $response = Invoke-WebRequest -Uri $url -Method Post -Headers $headers -Body $body -UseBasicParsing
-    $entityIdHeader = $response.Headers['OData-EntityId']
-    if ($entityIdHeader -is [System.Collections.IEnumerable] -and $entityIdHeader -isnot [string]) {
-        $entityIdHeader = $entityIdHeader | Select-Object -First 1
-    }
-    if ([string]$entityIdHeader -match '\(([0-9a-fA-F-]+)\)') {
-        return $Matches[1]
-    }
-    throw "Failed to extract record ID from OData-EntityId header for '$EntityName'"
-}
-
-function Set-PluginPackageManagedIdentity {
-    <#
-    Links (or verifies the link of) a managed identity to a plugin package.
-    Idempotent — skips the update if the link is already correct.
-    #>
-    param(
-        [DataverseApiClient]$Client,
-        [string]$PluginPackageUniqueName,
-        [string]$ManagedIdentityId
-    )
-
+# ─── Resolve plugin package GUID if not supplied directly ────────────────────
+if ($PSCmdlet.ParameterSetName -eq 'ByUniqueName') {
     Write-Host "Looking up plugin package '$PluginPackageUniqueName'..." -ForegroundColor DarkGray
 
+    # Use the Dataverse API client for the lookup (already a dependency of Register-Plugin.ps1)
+    . "$PSScriptRoot/DataverseApiClient.ps1"
+    $client = [DataverseApiClient]::new($EnvironmentUrl)
+
     $encoded = [Uri]::EscapeDataString($PluginPackageUniqueName)
-    $results = $Client.RetrieveMultiple('pluginpackages',
-        "?`$filter=uniquename eq '$encoded'&`$select=pluginpackageid,name,uniquename,_managedidentityid_value")
+    $results = $client.RetrieveMultiple('pluginpackages',
+        "?`$filter=uniquename eq '$encoded'&`$select=pluginpackageid,uniquename")
 
     if (-not $results -or $results.Count -eq 0) {
-        throw "Plugin package '$PluginPackageUniqueName' not found in environment '$($Client.DataverseHost)'.`nPush the plugin package first (Register-Plugin.ps1) before configuring managed identity."
+        throw "Plugin package '$PluginPackageUniqueName' not found in environment.`nPush the plugin package first via Register-Plugin.ps1."
     }
-
-    $pkg = $results[0]
-    $pkgId = $pkg.pluginpackageid
-    $currentMiId = $pkg.'_managedidentityid_value'
-
-    if ($currentMiId -and $currentMiId -eq $ManagedIdentityId) {
-        Write-Host "Plugin package '$($pkg.uniquename)' is already linked to managed identity ($ManagedIdentityId)." -ForegroundColor Cyan
-        return
-    }
-
-    Write-Host "Linking managed identity to plugin package '$($pkg.uniquename)'..." -ForegroundColor DarkGray
-    $Client.Update('pluginpackages', $pkgId, @{
-        'managedidentityid@odata.bind' = "/managedidentities($ManagedIdentityId)"
-    })
-    Write-Host "Plugin package linked to managed identity." -ForegroundColor Green
+    $PluginPackageId = $results[0].pluginpackageid
+    Write-Host "  Found: $PluginPackageId" -ForegroundColor DarkGray
 }
 
-function Show-ManagedIdentities {
-    <# Lists all user-created managed identities for diagnostics. #>
-    param([DataverseApiClient]$Client)
-
-    Write-Host ""
-    Write-Host "Listing managed identities (user-created)..." -ForegroundColor DarkGray
-
-    # Filter out SYSTEM-created identities via linked entity
-    $odata = "?`$select=managedidentityid,name,applicationid,tenantid,credentialsource" +
-             "&`$expand=createdby(`$select=fullname)" +
-             "&`$filter=createdby/fullname ne 'SYSTEM'"
-
-    $identities = $Client.RetrieveMultiple('managedidentities', $odata)
-
-    if (-not $identities -or $identities.Count -eq 0) {
-        Write-Host "No user-created managed identities found." -ForegroundColor Yellow
-        return
-    }
-
-    $credSourceNames = @{ 0 = 'ClientSecret'; 1 = 'KeyVault'; 2 = 'Managed'; 3 = 'MSFirstPartyCert' }
-
-    Write-Host "Found $($identities.Count) managed identities:" -ForegroundColor Cyan
-    foreach ($id in $identities) {
-        $credName = $credSourceNames[[int]$id.credentialsource] ?? "Unknown($($id.credentialsource))"
-        Write-Host ""
-        Write-Host "  Name             : $($id.name)"
-        Write-Host "  ID               : $($id.managedidentityid)"
-        Write-Host "  Application ID   : $($id.applicationid)"
-        Write-Host "  Tenant ID        : $($id.tenantid)"
-        Write-Host "  Credential source: $credName"
-    }
-    Write-Host ""
-}
-
-#endregion
-
-#region Main
-
+# ─── Header ───────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "  Configure Managed Identity" -ForegroundColor Cyan
-Write-Host "  Environment: $EnvironmentUrl" -ForegroundColor Cyan
+if ($EnvironmentUrl) {
+    Write-Host "  Environment  : $EnvironmentUrl" -ForegroundColor Cyan
+}
+Write-Host "  Component    : $ComponentType ($PluginPackageId)" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
-$client = Initialize-ApiClient -EnvironmentUrl $EnvironmentUrl -TenantId $TenantId -ClientId $ClientId
+# ─── Build common pac args ────────────────────────────────────────────────────
+$pacEnvArgs = if ($EnvironmentUrl) { @('--environment', $EnvironmentUrl) } else { @() }
 
-if ($ListOnly) {
-    Show-ManagedIdentities -Client $client
-    exit 0
+# ─── GetOnly — show current MI and exit ──────────────────────────────────────
+if ($GetOnly) {
+    Write-Host "Getting current managed identity..." -ForegroundColor DarkGray
+    pac managed-identity get @pacEnvArgs --component-type $ComponentType --component-id $PluginPackageId
+    exit $LASTEXITCODE
 }
 
-Write-Host "Managed Identity Name : $ManagedIdentityName"
-Write-Host "Application ID        : $ApplicationId"
-Write-Host "AAD Tenant ID         : $AadTenantId"
-Write-Host "Plugin Package        : $PluginPackageUniqueName"
+# ─── Require ApplicationId and AadTenantId for create/update ─────────────────
+if (-not $ApplicationId -or -not $AadTenantId) {
+    throw "-ApplicationId and -AadTenantId are required unless using -GetOnly."
+}
+
+Write-Host "Application ID : $ApplicationId"
+Write-Host "AAD Tenant ID  : $AadTenantId"
 Write-Host ""
 
-# Step 1 — Create or update the managed identity record
-$managedIdentityId = Get-OrCreateManagedIdentity `
-    -Client $client `
-    -Name $ManagedIdentityName `
-    -ApplicationId $ApplicationId `
-    -AadTenantId $AadTenantId
+# ─── Check if a managed identity is already linked ───────────────────────────
+Write-Host "Checking for existing managed identity on component..." -ForegroundColor DarkGray
+$getOutput = pac managed-identity get @pacEnvArgs --component-type $ComponentType --component-id $PluginPackageId 2>&1
+$alreadyLinked = $LASTEXITCODE -eq 0 -and ($getOutput | Select-String -Quiet 'applicationid|application id|managed.identity')
 
-# Step 2 — Link managed identity to the plugin package
-Set-PluginPackageManagedIdentity `
-    -Client $client `
-    -PluginPackageUniqueName $PluginPackageUniqueName `
-    -ManagedIdentityId $managedIdentityId
+if ($alreadyLinked) {
+    Write-Host "Existing managed identity found — updating..." -ForegroundColor DarkGray
+    pac managed-identity update @pacEnvArgs `
+        --component-type $ComponentType `
+        --component-id   $PluginPackageId `
+        --tenant-id      $AadTenantId `
+        --application-id $ApplicationId
+    if ($LASTEXITCODE -ne 0) { throw "pac managed-identity update failed." }
+    Write-Host "Managed identity updated." -ForegroundColor Green
+}
+else {
+    Write-Host "No existing managed identity — creating..." -ForegroundColor DarkGray
+    pac managed-identity create @pacEnvArgs `
+        --component-type $ComponentType `
+        --component-id   $PluginPackageId `
+        --tenant-id      $AadTenantId `
+        --application-id $ApplicationId
+    if ($LASTEXITCODE -ne 0) { throw "pac managed-identity create failed." }
+    Write-Host "Managed identity created and linked." -ForegroundColor Green
+}
 
+# ─── Configure federated identity credential on Azure AD (optional) ───────────
+if ($ConfigureFic) {
+    Write-Host ""
+    Write-Host "Configuring federated identity credential on Azure AD app..." -ForegroundColor DarkGray
+    Write-Host "(Requires Application.ReadWrite.All or Owner on the app registration)" -ForegroundColor DarkGray
+    pac managed-identity configure-fic @pacEnvArgs --component-type $ComponentType --component-id $PluginPackageId
+    if ($LASTEXITCODE -ne 0) { throw "pac managed-identity configure-fic failed." }
+    Write-Host "Federated identity credential configured." -ForegroundColor Green
+}
+
+# ─── Verify federated identity credential (optional) ─────────────────────────
+if ($VerifyFic) {
+    Write-Host ""
+    Write-Host "Verifying federated identity credential..." -ForegroundColor DarkGray
+    pac managed-identity verify-fic @pacEnvArgs --component-type $ComponentType --component-id $PluginPackageId
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "verify-fic reported issues. Review output above."
+    }
+    else {
+        Write-Host "Federated identity credential verified." -ForegroundColor Green
+    }
+}
+
+# ─── Done ─────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Green
 Write-Host "  Managed identity configured successfully" -ForegroundColor Green
-Write-Host "  ID: $managedIdentityId" -ForegroundColor Green
 Write-Host "==========================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "Next: ensure the Azure AD app registration has the correct" -ForegroundColor DarkGray
-Write-Host "  API permissions and federated credentials for this environment." -ForegroundColor DarkGray
-Write-Host ""
-
-#endregion
+if (-not $ConfigureFic) {
+    Write-Host "Tip: pass -ConfigureFic to also create the federated identity credential" -ForegroundColor DarkGray
+    Write-Host "  on the Azure AD app registration (requires Azure AD permissions)." -ForegroundColor DarkGray
+    Write-Host ""
+}

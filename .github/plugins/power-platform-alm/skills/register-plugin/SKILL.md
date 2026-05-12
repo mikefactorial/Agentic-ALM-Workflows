@@ -108,9 +108,10 @@ Most common scenario — plugin already exists in the environment with steps def
     -SolutionName "{feature_solution}" `
     -SignPackage `
     -SignCertificateFingerprint "{cert_thumbprint}" `
-    -ManagedIdentityName "{display name}" `
     -ManagedIdentityApplicationId "{azure_app_id_guid}" `
-    -ManagedIdentityTenantId "{azure_tenant_id_guid}"
+    -ManagedIdentityTenantId "{azure_tenant_id_guid}" `
+    -ConfigureFic `
+    -VerifyFic
 ```
 
 The script will:
