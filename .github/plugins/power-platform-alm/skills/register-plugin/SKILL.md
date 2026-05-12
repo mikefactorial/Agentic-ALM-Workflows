@@ -21,6 +21,7 @@ Push a plugin binary and register steps/images in a Dataverse dev environment us
 | Scaffold a net-new plugin project (create .csproj, class, wire into solution) | `scaffold-plugin` |
 | Deploy a full solution ZIP to dev or dev-test | `deploy-solution` |
 | Sync registered steps back to source control | `sync-solution` |
+| Sign plugin package + create managed identity record + link to package | `configure-managed-identity` (or pass `-SignPackage` + `-ManagedIdentity*` params directly to this skill's Step 2) |
 
 ## Configuration
 
@@ -96,13 +97,31 @@ Most common scenario — plugin already exists in the environment with steps def
     -SolutionName "{feature_solution}"
 ```
 
+**If the plugin uses Managed Identity**, add signing and managed identity params (see `configure-managed-identity` skill for full certificate setup):
+
+```powershell
+.platform/.github/workflows/scripts/Register-Plugin.ps1 `
+    -EnvironmentUrl "{environment_url}" `
+    -SolutionPath "src/solutions/{solution}" `
+    -PluginName "{plugin_package_name}" `
+    -RegisterSteps `
+    -SolutionName "{feature_solution}" `
+    -SignPackage `
+    -SignCertificateFingerprint "{cert_thumbprint}" `
+    -ManagedIdentityName "{display name}" `
+    -ManagedIdentityApplicationId "{azure_app_id_guid}" `
+    -ManagedIdentityTenantId "{azure_tenant_id_guid}"
+```
+
 The script will:
 1. Find plugin metadata in `pluginpackages/` or `PluginAssemblies/`
 2. Locate the built artifact
-3. Push the binary via `pac plugin push`
-4. Parse `SdkMessageProcessingSteps/*.xml` for matching steps
-5. Create/update each step and its images via Dataverse Web API
-6. Add steps to the feature solution (if `-SolutionName` provided)
+3. Sign the .nupkg (if `-SignPackage` specified)
+4. Push the binary via `pac plugin push`
+5. Create/update the `managedidentity` record and link it to the package (if `-ManagedIdentityName` specified)
+6. Parse `SdkMessageProcessingSteps/*.xml` for matching steps
+7. Create/update each step and its images via Dataverse Web API
+8. Add steps to the feature solution (if `-SolutionName` provided)
 
 ### 3. Push Only (No Step Registration)
 

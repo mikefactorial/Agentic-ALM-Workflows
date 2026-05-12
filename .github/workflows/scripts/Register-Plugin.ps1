@@ -76,6 +76,40 @@ param(
     [Parameter(ParameterSetName = 'FromXml')]
     [switch]$SkipPush,
 
+    # --- Mode A: Package signing (required when using managed identity) ---
+    [Parameter(ParameterSetName = 'FromXml')]
+    [switch]$SignPackage,
+
+    [Parameter(ParameterSetName = 'FromXml')]
+    [string]$SignCertificatePath,
+
+    [Parameter(ParameterSetName = 'FromXml')]
+    [string]$SignCertificatePassword,
+
+    [Parameter(ParameterSetName = 'FromXml')]
+    [string]$SignCertificateFingerprint,
+
+    [Parameter(ParameterSetName = 'FromXml')]
+    [ValidateSet('CurrentUser', 'LocalMachine')]
+    [string]$SignCertificateStoreLocation = 'CurrentUser',
+
+    [Parameter(ParameterSetName = 'FromXml')]
+    [string]$SignCertificateStoreName = 'My',
+
+    [Parameter(ParameterSetName = 'FromXml')]
+    [string]$SignTimestamper,
+
+    # --- Mode A: Managed identity configuration (applied after push) ---
+    [Parameter(ParameterSetName = 'FromXml')]
+    [string]$ManagedIdentityName,
+
+    [Parameter(ParameterSetName = 'FromXml')]
+    [string]$ManagedIdentityApplicationId,
+
+    # AAD tenant for the managed identity (defaults to -TenantId auth param if omitted)
+    [Parameter(ParameterSetName = 'FromXml')]
+    [string]$ManagedIdentityTenantId,
+
     # --- Mode B: Individual step registration ---
     [Parameter(ParameterSetName = 'Step', Mandatory)]
     [string]$PluginType,
@@ -822,11 +856,59 @@ Then re-run this script.
 "@
             }
 
+            # Sign the package before pushing (required for managed identity)
+            if ($SignPackage) {
+                $signParams = @{
+                    PackagePath = $PluginFile
+                }
+                if ($SignCertificatePath) {
+                    $signParams['CertificatePath'] = $SignCertificatePath
+                    if ($SignCertificatePassword) { $signParams['CertificatePassword'] = $SignCertificatePassword }
+                }
+                elseif ($SignCertificateFingerprint) {
+                    $signParams['CertificateFingerprint'] = $SignCertificateFingerprint
+                    $signParams['CertificateStoreLocation'] = $SignCertificateStoreLocation
+                    $signParams['CertificateStoreName']     = $SignCertificateStoreName
+                }
+                else {
+                    throw "-SignPackage requires either -SignCertificatePath or -SignCertificateFingerprint."
+                }
+                if ($SignTimestamper) { $signParams['Timestamper'] = $SignTimestamper }
+
+                & "$PSScriptRoot/Sign-PluginPackage.ps1" @signParams
+                if ($LASTEXITCODE -ne 0) { throw "Package signing failed." }
+            }
+
             # Push the binary
             Push-PluginBinary -PluginFile $PluginFile `
                 -PluginId $pluginRecord.Id `
                 -PluginType $pluginRecord.Type `
                 -EnvironmentUrl $EnvironmentUrl
+
+            # Configure managed identity (create/update record + link to package)
+            if ($ManagedIdentityName) {
+                if (-not $ManagedIdentityApplicationId) {
+                    throw "-ManagedIdentityApplicationId is required when -ManagedIdentityName is specified."
+                }
+                $miTenant = if ($ManagedIdentityTenantId) { $ManagedIdentityTenantId } else { $TenantId }
+                if (-not $miTenant) {
+                    throw "-ManagedIdentityTenantId (or -TenantId) is required when -ManagedIdentityName is specified."
+                }
+                Write-Host "`n--- Configuring managed identity ---"
+                $miParams = @{
+                    EnvironmentUrl          = $EnvironmentUrl
+                    ManagedIdentityName     = $ManagedIdentityName
+                    ApplicationId           = $ManagedIdentityApplicationId
+                    AadTenantId             = $miTenant
+                    PluginPackageUniqueName = $metadata.UniqueName
+                }
+                if ($TenantId -and $ClientId) {
+                    $miParams['TenantId'] = $TenantId
+                    $miParams['ClientId'] = $ClientId
+                }
+                & "$PSScriptRoot/Configure-ManagedIdentity.ps1" @miParams
+                if ($LASTEXITCODE -ne 0) { throw "Managed identity configuration failed." }
+            }
         }
 
         if ($RegisterSteps) {
