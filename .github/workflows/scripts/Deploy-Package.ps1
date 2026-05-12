@@ -243,6 +243,35 @@ if ($group -and $group.managedIdentities) {
 
 $settingsArg = $settingsParts -join "|"
 
+# ── Build organization (environment) settings ─────────────────────────────────
+# Reads environments[].organizationSettings from environment-config.json and emits
+# flat ENVSETTING_{logicalName}=value entries for the target environment.
+# PackageImportExtension.EnvironmentSettingService.UpdateOrganizationSettings() reads
+# these via GetSettings("ENVSETTING") and patches the Organization entity in Dataverse.
+# Use this to enable/configure environment-level features (audit, email settings, etc.)
+# without manual post-deploy steps.
+if ($envConfig) {
+    $envEntry = $envConfig.environments | Where-Object { $_.slug -eq $targetEnvironment }
+    if (-not $envEntry) {
+        $envEntry = $envConfig.innerLoopEnvironments | Where-Object { $_.slug -eq $targetEnvironment }
+    }
+    if ($envEntry -and $envEntry.organizationSettings) {
+        $orgSettingCount = 0
+        $orgSettings = $envEntry.organizationSettings
+        foreach ($prop in $orgSettings.PSObject.Properties) {
+            if ([string]::IsNullOrWhiteSpace($prop.Value)) {
+                Write-Warning "  Organization setting '$($prop.Name)' has empty value — skipping."
+                continue
+            }
+            $settingsArg += "|ENVSETTING_$($prop.Name)=$($prop.Value)"
+            $orgSettingCount++
+        }
+        if ($orgSettingCount -gt 0) {
+            Write-Host "  $orgSettingCount organization setting(s) for '$targetEnvironment'" -ForegroundColor Gray
+        }
+    }
+}
+
 if ($totalKeys -gt 0) {
     Write-Host "Settings    : $totalKeys key(s) across $($settingsParts.Count) solution(s)" -ForegroundColor Gray
 }
