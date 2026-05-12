@@ -22,6 +22,8 @@ Move a validated feature from dev/dev-test into the dev integration environment 
 | Cut a release and build release packages | `create-release` |
 | Deploy a release package to test or production | `deploy-package` |
 
+> **NEVER run `gh pr create` from a feature branch directly to `develop` or `main`.** Feature branches contain `src/solutions/{featureSolution}/` and settings templates that must never enter `develop`. The only valid PR paths out of a feature branch are: (1) the sync PR from a `sync/` branch (Step 2b), and (2) the clean code PR produced by `Create-FeatureCodePR.ps1` (Step 3). Opening a PR any other way will either be blocked by `check-feature-solution-files.yml` or will silently pollute `develop` with feature solution artifacts.
+
 ---
 
 ## Configuration
