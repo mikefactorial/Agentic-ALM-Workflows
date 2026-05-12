@@ -22,6 +22,9 @@ Set up a Dataverse managed identity so plugin packages can call external service
 | Push the plugin binary / register steps | `register-plugin` (use `-ManagedIdentity*` params for combined flow) |
 | Set up OIDC federated credentials for GitHub Actions → Dataverse auth | `setup-oidc` |
 | Scaffold a new plugin project | `scaffold-plugin` |
+| Deploy a release package to test/prod with managed identity patched per environment | `deploy-package` — populate `managedIdentities[]` in `environment-config.json` |
+
+> **Inner loop vs outer loop:** The scripts in this skill (`Configure-ManagedIdentity.ps1`, `Register-Plugin.ps1`) handle the **inner loop** — linking a managed identity to a plugin package in a dev environment. For **outer-loop** deployments (test/prod via `pac package deploy`), the correct `applicationId` and `tenantId` are injected at deploy time by `Deploy-Package.ps1` reading `packageGroups[].managedIdentities` from `environment-config.json`. You must populate that config for each environment where the package will be deployed, otherwise the solution retains the dev identity baked in at sync time.
 
 ## Prerequisites
 

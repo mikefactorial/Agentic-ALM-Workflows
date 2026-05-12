@@ -74,9 +74,34 @@ Tell the user:
 
 1. Downloads release artifacts (package ZIP + settings files) from GitHub Release
 2. Looks up solutions for the package group from `environment-config.json`
-3. Merges deployment settings into pipe-delimited format
-4. Runs `pac package deploy --package <zip> --settings "<merged settings>"`
-5. Post-deploy hooks activate flows and import configuration data
+3. Merges deployment settings into pipe-delimited format (connection references + environment variables)
+4. If `packageGroups[x].managedIdentities` is configured, patches `applicationId` and `tenantId` inside the solution ZIP(s) for the target environment before import — see [Managed Identity Configuration](#managed-identity-configuration) below
+5. Runs `pac package deploy --package <zip> --settings "<merged settings>"`
+6. Post-deploy hooks activate flows and import configuration data
+
+### Managed Identity Configuration
+
+If any solution in the package uses `ManagedIdentityService.AcquireToken` (i.e., a plugin with a managed identity), each deployment environment needs its own Azure AD `applicationId` and `tenantId`. The deployer patches these values into `customizations.xml` inside the solution ZIP before import so the correct identity is used per environment.
+
+Populate `managedIdentities[]` on the package group in `environment-config.json`:
+
+```json
+"managedIdentities": [
+  {
+    "name": "My Plugin Identity",
+    "$comment_name": "Matches <name> in src/solutions/{solution}/ManagedIdentities/{name}/managedidentity.xml",
+    "solutionName": "{solutionPrefix}_{solutionName}",
+    "perEnvironment": {
+      "{envPrefix}-dev-test": { "applicationId": "...", "tenantId": "..." },
+      "{envPrefix}-test":     { "applicationId": "...", "tenantId": "..." },
+      "{envPrefix}-prod":     { "applicationId": "...", "tenantId": "..." }
+    }
+  }
+]
+```
+
+- `name` — the managed identity's internal `name` from Dataverse. Find it in `src/solutions/{solution}/ManagedIdentities/{name}/managedidentity.xml` → `<name>` element, or run `pac managed-identity get --component-type PluginPackage --component-id {guid}`
+- Without this config, the managed identity retains the `applicationId`/`tenantId` baked in at sync time (the dev environment's identity), which will fail token acquisition in test/prod
 
 ### 4. Recommended Deployment Order
 
