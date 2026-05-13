@@ -234,7 +234,10 @@ if ($group -and $group.managedIdentities) {
         })
     }
     foreach ($sol in $miBySOlution.Keys) {
-        $json   = $miBySOlution[$sol] | ConvertTo-Json -Depth 3 -Compress
+        # Use -InputObject with @() to guarantee a JSON array even when there is only one entry.
+        # Piping through the pipeline unwraps a single-element List and ConvertTo-Json emits
+        # a bare object {...} instead of [{...}], which breaks the C# List<T> deserializer.
+        $json   = ConvertTo-Json -InputObject @($miBySOlution[$sol]) -Depth 3 -Compress
         $base64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($json))
         $settingsParts.Add("${sol}_managedidentities=$base64")
         Write-Host "  $($miBySOlution[$sol].Count) managed identity config(s) for '$sol'" -ForegroundColor Gray
