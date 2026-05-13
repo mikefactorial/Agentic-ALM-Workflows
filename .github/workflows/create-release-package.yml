@@ -22,6 +22,13 @@ on:
         required: false
         type: boolean
         default: false
+    outputs:
+      release_tag:
+        description: 'The release tag that was created (e.g. v2026.04.17.1), or empty if no release was built.'
+        value: ${{ jobs.create-release.outputs.release_tag }}
+      release_created:
+        description: 'Whether a new release was created in this run (true or empty).'
+        value: ${{ jobs.create-release.outputs.release_created }}
 
 concurrency:
   group: release-package-${{ github.repository }}-${{ github.ref }}
@@ -238,6 +245,9 @@ jobs:
     needs: [check-changes, build-package]
     if: |
       needs.check-changes.outputs.has_changes == 'true' && inputs.create_release == true
+    outputs:
+      release_tag:     ${{ steps.create.outputs.release_tag }}
+      release_created: ${{ steps.create.outputs.release_created }}
 
     env:
       PACKAGE_VERSION: ${{ needs.build-package.outputs.package_version }}
@@ -322,6 +332,7 @@ jobs:
           Set-Content 'release-notes.md' ($lines -join "`n") -Encoding utf8
 
       - name: Create Release
+        id: create
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -339,3 +350,5 @@ jobs:
 
           gh @createArgs
           Write-Host "✓ Release $tag created."
+          "release_tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "release_created=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
