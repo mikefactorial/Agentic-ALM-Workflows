@@ -106,7 +106,7 @@ jobs:
             -testResultsPath "./artifacts/test-results"
 
       - name: Publish test results
-        if: always() && hashFiles('./artifacts/test-results/*.trx') != ''
+        if: always()
         uses: dorny/test-reporter@v1
         with:
           name: Plugin Test Results
@@ -151,7 +151,7 @@ jobs:
             -testResultsPath "./artifacts/test-results"
 
       - name: Publish PCF test results
-        if: always() && hashFiles('./artifacts/test-results/*.junit.xml') != ''
+        if: always()
         uses: dorny/test-reporter@v1
         with:
           name: PCF Control Test Results (${{ matrix.group }})
