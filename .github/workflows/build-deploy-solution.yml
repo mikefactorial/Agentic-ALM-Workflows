@@ -59,9 +59,39 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Setup Power Platform CLI
         shell: pwsh
         run: .platform\.github\workflows\scripts\Install-PacCli.ps1
+
+      - name: Pre-build PCF, web resource, and code app dependencies
+        shell: pwsh
+        run: |
+          $config = Get-Content 'deployments/settings/environment-config.json' -Raw | ConvertFrom-Json
+
+          $allDeps = @(
+            @($config.solutionAreas | ForEach-Object { $_.controlPreBuildPaths }  | Where-Object { $_ })
+            @($config.solutionAreas | ForEach-Object { $_.webResourcePreBuildPaths } | Where-Object { $_ })
+            @($config.solutionAreas | ForEach-Object { $_.codeAppPreBuildPaths }   | Where-Object { $_ })
+          )
+
+          if ($allDeps.Count -eq 0) {
+            Write-Host "No JS pre-build dependencies defined — skipping."
+            exit 0
+          }
+
+          foreach ($dep in $allDeps) {
+            $localPath = $dep -replace '/', '\'
+            Write-Host "Building $localPath..."
+            Push-Location $localPath
+            npm install
+            npm run build
+            Pop-Location
+          }
 
       - name: Build solution
         shell: pwsh

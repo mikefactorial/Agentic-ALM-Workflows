@@ -48,6 +48,12 @@ jobs:
       controls_changed: ${{ steps.detect.outputs.controls_changed }}
       controls_exist: ${{ steps.detect.outputs.controls_exist }}
       control_groups: ${{ steps.detect.outputs.control_groups }}
+      webresources_changed: ${{ steps.detect.outputs.webresources_changed }}
+      webresources_exist: ${{ steps.detect.outputs.webresources_exist }}
+      webresource_groups: ${{ steps.detect.outputs.webresource_groups }}
+      codeapps_changed: ${{ steps.detect.outputs.codeapps_changed }}
+      codeapps_exist: ${{ steps.detect.outputs.codeapps_exist }}
+      codeapp_groups: ${{ steps.detect.outputs.codeapp_groups }}
       solutions_exist: ${{ steps.detect.outputs.solutions_exist }}
 
     steps:
@@ -159,17 +165,99 @@ jobs:
           reporter: jest-junit
           fail-on-error: false
 
+  build-web-resources:
+    name: Build Web Resources (${{ matrix.group }})
+    runs-on: windows-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.webresources_exist == 'true' && needs.detect-changes.outputs.webresources_changed == 'true' && needs.detect-changes.outputs.webresource_groups != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        group: ${{ fromJson(needs.detect-changes.outputs.webresource_groups) }}
+
+    steps:
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'src/webresources/${{ matrix.group }}/**/package-lock.json'
+
+      - name: Build web resources
+        shell: pwsh
+        run: |
+          .platform\.github\workflows\scripts\Build-WebResources.ps1 `
+            -projectFilter "${{ matrix.group }}" `
+            -artifactsPath "./artifacts/webresources" `
+            -testResultsPath "./artifacts/test-results"
+
+      - name: Publish web resource test results
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Web Resource Test Results (${{ matrix.group }})
+          path: ./artifacts/test-results/*.junit.xml
+          reporter: jest-junit
+          fail-on-error: false
+
+  build-code-apps:
+    name: Build Code Apps (${{ matrix.group }})
+    runs-on: windows-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.codeapps_exist == 'true' && needs.detect-changes.outputs.codeapps_changed == 'true' && needs.detect-changes.outputs.codeapp_groups != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        group: ${{ fromJson(needs.detect-changes.outputs.codeapp_groups) }}
+
+    steps:
+      - name: Checkout calling repo
+        uses: actions/checkout@v4
+
+      - name: Checkout platform scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Agentic-ALM-Workflows
+          ref: main
+          path: .platform
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'src/codeapps/${{ matrix.group }}/**/package-lock.json'
+
+      - name: Build code apps
+        shell: pwsh
+        run: |
+          .platform\.github\workflows\scripts\Build-CodeApps.ps1 `
+            -projectFilter "${{ matrix.group }}" `
+            -artifactsPath "./artifacts/codeapps"
+
   build-solutions:
     name: Build Changed Solutions
     runs-on: windows-latest
-    needs: [detect-changes, build-plugins, build-controls]
+    needs: [detect-changes, build-plugins, build-controls, build-web-resources, build-code-apps]
     if: >-
       ${{
         always() &&
         needs.detect-changes.result == 'success' &&
         needs.detect-changes.outputs.solutions_exist == 'true' &&
         (needs.build-plugins.result == 'success' || needs.build-plugins.result == 'skipped') &&
-        (needs.build-controls.result == 'success' || needs.build-controls.result == 'skipped')
+        (needs.build-controls.result == 'success' || needs.build-controls.result == 'skipped') &&
+        (needs.build-web-resources.result == 'success' || needs.build-web-resources.result == 'skipped') &&
+        (needs.build-code-apps.result == 'success' || needs.build-code-apps.result == 'skipped')
       }}
     environment: ${{ inputs.dev_environment }}
 
@@ -322,7 +410,7 @@ jobs:
   validation-summary:
     name: Validation Summary
     runs-on: windows-latest
-    needs: [build-plugins, build-controls, build-solutions, validate-settings-generation]
+    needs: [build-plugins, build-controls, build-web-resources, build-code-apps, build-solutions, validate-settings-generation]
     if: always()
 
     steps:
@@ -339,6 +427,8 @@ jobs:
           foreach ($job in @(
             @{ name = 'Plugin Build';              result = '${{ needs.build-plugins.result }}' },
             @{ name = 'PCF Controls Build';        result = '${{ needs.build-controls.result }}' },
+            @{ name = 'Web Resources Build';       result = '${{ needs.build-web-resources.result }}' },
+            @{ name = 'Code Apps Build';           result = '${{ needs.build-code-apps.result }}' },
             @{ name = 'Solutions Build';           result = '${{ needs.build-solutions.result }}' },
             @{ name = 'Settings Generation (main)'; result = '${{ needs.validate-settings-generation.result }}' }
           )) {

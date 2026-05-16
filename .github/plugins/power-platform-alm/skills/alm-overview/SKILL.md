@@ -22,6 +22,8 @@ This skill routes requests to the correct specialist skill. Read this first, the
 | `register-plugin` | Push plugin binary to dev; register or update message processing steps; register custom APIs |
 | `scaffold-plugin` | Create a new plugin project; wire into solution; register the first step |
 | `scaffold-pcf-control` | Create a new PCF control; wire into solution; push to dev |
+| `scaffold-web-resource` | Create a new TypeScript web resource; configure Vite IIFE build; wire map.xml into cdsproj |
+| `scaffold-code-app` | Create a new Power Apps Code App (React+Vite); initialize with pac CLI; wire map.xml into cdsproj |
 | `configure-managed-identity` | Sign plugin NuGet package; create/update managed identity record in Dataverse; link managed identity to plugin package |
 | `promote-solution` | Promote validated feature from dev to integration; create clean code PR; complete inner-loop handoff |
 | `create-release` | Merge develop → main; build release packages; create GitHub Release |
@@ -69,6 +71,20 @@ After `pac pcf push`, the control must be manually added to the feature solution
 
 `Build-Solutions.ps1` is outer-loop CI only. Inner-loop builds always use `dotnet build` on the target `.cdsproj`.
 
+### Uniform JS component toolchain (PCF controls, web resources, code apps)
+
+All three JavaScript/TypeScript component types share the same pipeline pattern:
+
+| Component | Source dir | Build cmd | cdsproj wiring | Quick inner-loop push |
+|---|---|---|---|---|
+| PCF control | `src/controls/{area}/PCF-{Name}/` | `npm run build` | `<ProjectReference>` to `.pcfproj` | `pac pcf push` |
+| Web resource | `src/webresources/{area}/WR-{Name}/` | `npm run build` (Vite IIFE) | `map.xml` → `WebResources/{prefix}_/scripts/` | `pac solution import` |
+| Code app | `src/codeapps/{area}/{AppName}/` | `npm run build` (Vite, hash disabled) | `map.xml` → `CanvasApps/{logicalName}_CodeAppPackages/` | `pac code push --solutionName` |
+
+All three are pre-built by CI before `dotnet build` runs on the `.cdsproj`. The pre-build paths are registered in `environment-config.json` under `solutionAreas[x].controlPreBuildPaths`, `webResourcePreBuildPaths`, and `codeAppPreBuildPaths` respectively.
+
+For code apps, content hashing must be disabled in `vite.config.ts` so that `map.xml` and `meta.xml` filenames remain stable across builds. Use `pac solution sync` after the first `pac code push` to capture the app's `meta.xml` and `_CodeAppPackages` folder into the solution source.
+
 ## When to Use Each Skill
 
 | User says | Invoke |
@@ -76,6 +92,8 @@ After `pac pcf push`, the control must be manually added to the feature solution
 | "start a new feature", "create a feature branch", "begin work on AB#### or GitHub issue" | `start-feature` |
 | "scaffold a plugin", "create a new plugin", "add server-side logic" | `scaffold-plugin` |
 | "scaffold a PCF control", "create a UI component", "build a custom control" | `scaffold-pcf-control` |
+| "scaffold a web resource", "create a form script", "create a ribbon script", "TypeScript web resource", "add client-side logic to a form" | `scaffold-web-resource` |
+| "scaffold a code app", "create a standalone web app", "build a React app for Power Platform", "Power Apps code app" | `scaffold-code-app` |
 | "register a plugin step", "push plugin to dev", "update plugin binary" | `register-plugin` |
 | "managed identity", "sign plugin package", "link managed identity", "plugin needs to call Azure", "ManagedIdentityService" | `configure-managed-identity` |
 | "build the solution", "compile", "validate the build" | `build-solution` |
