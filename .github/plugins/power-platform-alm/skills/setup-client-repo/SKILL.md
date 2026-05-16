@@ -152,6 +152,8 @@ After filling in, it should look like:
       "pluginsSln": "src/plugins/acm_AcmePlatform/AcmeCorp.AcmePlatform.Plugins.sln",
       "corePluginRef": null,
       "controlPreBuildPaths": [],
+      "webResourcePreBuildPaths": [],
+      "codeAppPreBuildPaths": [],
       "devEnv": "acme-dev",
       "integrationEnv": "acme-integration"
     }

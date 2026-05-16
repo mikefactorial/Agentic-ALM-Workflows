@@ -152,6 +152,42 @@ jobs:
             Pop-Location
           }
 
+      - name: Build web resource dependencies
+        shell: pwsh
+        run: |
+          $config = Get-Content 'deployments/settings/environment-config.json' -Raw | ConvertFrom-Json
+          $wrDeps = @($config.solutionAreas | ForEach-Object { $_.webResourcePreBuildPaths } | Where-Object { $_ })
+          if ($wrDeps.Count -eq 0) {
+            Write-Host "No web resource pre-build dependencies defined — skipping."
+            exit 0
+          }
+          foreach ($dep in $wrDeps) {
+            $localPath = $dep -replace '/', '\'
+            Write-Host "Building $localPath..."
+            Push-Location $localPath
+            npm install
+            npm run build
+            Pop-Location
+          }
+
+      - name: Build code app dependencies
+        shell: pwsh
+        run: |
+          $config     = Get-Content 'deployments/settings/environment-config.json' -Raw | ConvertFrom-Json
+          $appDeps    = @($config.solutionAreas | ForEach-Object { $_.codeAppPreBuildPaths } | Where-Object { $_ })
+          if ($appDeps.Count -eq 0) {
+            Write-Host "No code app pre-build dependencies defined — skipping."
+            exit 0
+          }
+          foreach ($dep in $appDeps) {
+            $localPath = $dep -replace '/', '\'
+            Write-Host "Building $localPath..."
+            Push-Location $localPath
+            npm install
+            npm run build
+            Pop-Location
+          }
+
       - name: Build Package
         id: build
         shell: pwsh
